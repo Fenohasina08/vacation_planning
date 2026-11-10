@@ -1,0 +1,124 @@
+/notifications:
+  get:
+    tags:
+    - Notifications
+    operationId: listNotifications
+    summary: Notifications dans l'application (contenu minimal, sans donnée confidentielle)
+    x-roles:
+    - employee
+    - manager
+    - hr
+    - director
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/Limit
+    - $ref: ../openapi.yaml#/components/parameters/Cursor
+    - name: unread_only
+      in: query
+      schema:
+        type: boolean
+        default: false
+    responses:
+      '200':
+        description: Page de notifications
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              - unread_count
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: ../openapi.yaml#/components/schemas/Notification
+                unread_count:
+                  type: integer
+                next_cursor:
+                  type: string
+                  nullable: true
+/notifications/{id}/read:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/Id
+  post:
+    tags:
+    - Notifications
+    operationId: markNotificationRead
+    summary: Marquer comme lue
+    x-roles:
+    - employee
+    - manager
+    - hr
+    - director
+    responses:
+      '204':
+        description: Marquée comme lue
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+/notifications/read-all:
+  post:
+    tags:
+    - Notifications
+    operationId: markAllNotificationsRead
+    summary: Tout marquer comme lu
+    x-roles:
+    - employee
+    - manager
+    - hr
+    - director
+    responses:
+      '204':
+        description: Marquées comme lues
+/notification-preferences:
+  get:
+    tags:
+    - Notifications
+    operationId: getNotificationPreferences
+    summary: Préférences de notification
+    x-roles:
+    - employee
+    - manager
+    - hr
+    - director
+    responses:
+      '200':
+        description: Préférences
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: ../openapi.yaml#/components/schemas/NotificationPreference
+  put:
+    tags:
+    - Notifications
+    operationId: replaceNotificationPreferences
+    summary: Remplacer les préférences
+    x-roles:
+    - employee
+    - manager
+    - hr
+    - director
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - data
+            properties:
+              data:
+                type: array
+                items:
+                  $ref: ../openapi.yaml#/components/schemas/NotificationPreference
+    responses:
+      '204':
+        description: Préférences enregistrées
+      '422':
+        $ref: ../openapi.yaml#/components/responses/ValidationError

@@ -1,0 +1,160 @@
+/calendar/me:
+  get:
+    tags:
+    - Calendrier et disponibilité
+    operationId: getMyCalendar
+    summary: Calendrier personnel (FONC-070)
+    x-roles:
+    - employee
+    - manager
+    - hr
+    - director
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/From
+    - $ref: ../openapi.yaml#/components/parameters/To
+    responses:
+      '200':
+        description: Absences et jours non ouvrés de la période
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Calendar
+      '422':
+        $ref: ../openapi.yaml#/components/responses/ValidationError
+/calendar:
+  get:
+    tags:
+    - Calendrier et disponibilité
+    operationId: getGlobalCalendar
+    summary: Calendrier global autorisé (FONC-071). Les motifs confidentiels ne sont jamais exposés
+    x-roles:
+    - manager
+    - hr
+    - director
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/From
+    - $ref: ../openapi.yaml#/components/parameters/To
+    - name: department_id
+      in: query
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '200':
+        description: Absences autorisées de la période
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Calendar
+      '422':
+        $ref: ../openapi.yaml#/components/responses/ValidationError
+/absence-limits:
+  get:
+    tags:
+    - Calendrier et disponibilité
+    operationId: listAbsenceLimits
+    summary: Limites d'absences simultanées
+    x-roles:
+    - hr
+    - director
+    responses:
+      '200':
+        description: Liste
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: ../openapi.yaml#/components/schemas/AbsenceLimit
+  post:
+    tags:
+    - Calendrier et disponibilité
+    operationId: createAbsenceLimit
+    summary: Définir une limite (FONC-074)
+    x-roles:
+    - hr
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/AbsenceLimitInput
+    responses:
+      '201':
+        description: Créée
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/AbsenceLimit
+      '422':
+        $ref: ../openapi.yaml#/components/responses/ValidationError
+/absence-limits/{id}:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/Id
+  put:
+    tags:
+    - Calendrier et disponibilité
+    operationId: replaceAbsenceLimit
+    summary: Modifier une limite
+    x-roles:
+    - hr
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/AbsenceLimitInput
+    responses:
+      '200':
+        description: Modifiée
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/AbsenceLimit
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+      '422':
+        $ref: ../openapi.yaml#/components/responses/ValidationError
+  delete:
+    tags:
+    - Calendrier et disponibilité
+    operationId: deleteAbsenceLimit
+    summary: Supprimer une limite
+    x-roles:
+    - hr
+    responses:
+      '204':
+        description: Supprimée
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+/availability/alerts:
+  get:
+    tags:
+    - Calendrier et disponibilité
+    operationId: listAvailabilityAlerts
+    summary: Alertes de disponibilité insuffisante (FONC-075)
+    x-roles:
+    - hr
+    - director
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/From
+    - $ref: ../openapi.yaml#/components/parameters/To
+    responses:
+      '200':
+        description: Alertes
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: ../openapi.yaml#/components/schemas/AvailabilityAlert

@@ -1,0 +1,23 @@
+/health:
+  get:
+    tags:
+    - Santé
+    operationId: getHealth
+    summary: État du service (sans donnée métier)
+    security: []
+    responses:
+      '200':
+        description: Service disponible
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - status
+              properties:
+                status:
+                  type: string
+                  enum:
+                  - ok
+                version:
+                  type: string

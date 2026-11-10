@@ -1,0 +1,114 @@
+/dashboard:
+  get:
+    tags:
+    - Tableau de bord
+    operationId: getDashboard
+    summary: Tableau de bord opérationnel (FONC-080)
+    x-roles:
+    - hr
+    - director
+    parameters:
+    - name: department_id
+      in: query
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '200':
+        description: Indicateurs du jour
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Dashboard
+/exports:
+  post:
+    tags:
+    - Exports
+    operationId: createExport
+    summary: Demander un export PDF, Excel ou CSV (FONC-090)
+    description: Génération asynchrone. Les permissions sont vérifiées au moment de la génération (FONC-091) ; l'export est
+      journalisé.
+    x-roles:
+    - hr
+    - director
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - kind
+            - format
+            properties:
+              kind:
+                type: string
+                enum:
+                - leave_requests
+                - balances
+                - calendar
+                - employees
+                - audit_logs
+              format:
+                $ref: ../openapi.yaml#/components/schemas/ExportFormat
+              filters:
+                type: object
+                additionalProperties: true
+    responses:
+      '202':
+        description: Export accepté
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ExportJob
+      '403':
+        $ref: ../openapi.yaml#/components/responses/Forbidden
+      '422':
+        $ref: ../openapi.yaml#/components/responses/ValidationError
+/exports/{id}:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/Id
+  get:
+    tags:
+    - Exports
+    operationId: getExport
+    summary: État d'un export
+    x-roles:
+    - hr
+    - director
+    responses:
+      '200':
+        description: Export
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ExportJob
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+/exports/{id}/download:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/Id
+  get:
+    tags:
+    - Exports
+    operationId: downloadExport
+    summary: Télécharger un export prêt (URL signée de courte durée ; expire)
+    x-roles:
+    - hr
+    - director
+    responses:
+      '302':
+        description: Redirection vers l'URL signée
+        headers:
+          Location:
+            schema:
+              type: string
+              format: uri
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+      '410':
+        description: Export expiré
+        content:
+          application/problem+json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Problem

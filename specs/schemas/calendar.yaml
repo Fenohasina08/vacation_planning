@@ -1,0 +1,177 @@
+CalendarEntry:
+  type: object
+  required:
+  - leave_request_id
+  - employee
+  - start_date
+  - end_date
+  - status
+  - label
+  description: Ne contient jamais le motif. Le libellé vaut « Absent » si le type est confidentiel.
+  properties:
+    leave_request_id:
+      type: string
+      format: uuid
+    employee:
+      $ref: ../openapi.yaml#/components/schemas/EmployeeSummary
+    start_date:
+      type: string
+      format: date
+    end_date:
+      type: string
+      format: date
+    start_part:
+      type: string
+      enum:
+      - full
+      - afternoon
+    end_part:
+      type: string
+      enum:
+      - full
+      - morning
+    status:
+      type: string
+      enum:
+      - pending
+      - approved
+    label:
+      type: string
+Calendar:
+  type: object
+  required:
+  - entries
+  - non_working_days
+  properties:
+    entries:
+      type: array
+      items:
+        $ref: ../openapi.yaml#/components/schemas/CalendarEntry
+    non_working_days:
+      type: array
+      items:
+        type: object
+        required:
+        - date
+        - kind
+        properties:
+          date:
+            type: string
+            format: date
+          kind:
+            type: string
+            enum:
+            - weekend
+            - holiday
+          label:
+            type: string
+            nullable: true
+AbsenceLimitInput:
+  type: object
+  required:
+  - scope
+  - mode
+  properties:
+    scope:
+      type: string
+      enum:
+      - company
+      - department
+    department_id:
+      type: string
+      format: uuid
+      nullable: true
+    max_simultaneous:
+      type: integer
+      minimum: 0
+      nullable: true
+    min_available_percent:
+      type: number
+      minimum: 0
+      maximum: 100
+      nullable: true
+    mode:
+      type: string
+      enum:
+      - warn
+      - block
+      description: À préciser (RG-006)
+AbsenceLimit:
+  allOf:
+  - $ref: ../openapi.yaml#/components/schemas/AbsenceLimitInput
+  - type: object
+    required:
+    - id
+    properties:
+      id:
+        type: string
+        format: uuid
+AvailabilityAlert:
+  type: object
+  required:
+  - date
+  - scope
+  - absent_count
+  properties:
+    date:
+      type: string
+      format: date
+    scope:
+      type: string
+      enum:
+      - company
+      - department
+    department_id:
+      type: string
+      format: uuid
+      nullable: true
+    absent_count:
+      type: integer
+    available_percent:
+      type: number
+    limit_id:
+      type: string
+      format: uuid
+Dashboard:
+  type: object
+  required:
+  - absent_today
+  - available_today
+  - pending_requests_count
+  - upcoming_absences
+  - availability_by_department
+  - alerts
+  properties:
+    absent_today:
+      type: array
+      items:
+        $ref: ../openapi.yaml#/components/schemas/EmployeeSummary
+    available_today:
+      type: integer
+    pending_requests_count:
+      type: integer
+    upcoming_absences:
+      type: array
+      items:
+        $ref: ../openapi.yaml#/components/schemas/CalendarEntry
+    availability_by_department:
+      type: array
+      items:
+        type: object
+        required:
+        - department_id
+        - available
+        - total
+        properties:
+          department_id:
+            type: string
+            format: uuid
+            nullable: true
+          available:
+            type: integer
+          total:
+            type: integer
+    alerts:
+      type: array
+      items:
+        $ref: ../openapi.yaml#/components/schemas/AvailabilityAlert

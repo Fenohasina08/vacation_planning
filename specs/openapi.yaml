@@ -1,0 +1,450 @@
+openapi: 3.0.3
+info:
+  title: API du SaaS de gestion des congés et absences (nom du projet à choisir)
+  version: 0.1.0
+  license:
+    name: MIT (ou autre)
+    url: https://opensource.org/licenses/MIT
+  description: >
+    Spécification de l'API REST du Produit IT Solution. **Proposition à
+    valider** : elle découle du cahier
+
+    des charges v0.1 et du schéma SQL 01_schema.sql.
+
+
+    **Règles transverses**
+
+    - **Isolation (ISO-002, ISO-003).** L'entreprise active est déduite de la
+    session côté serveur. Aucun
+      endpoint « entreprise » n'accepte un `company_id` dans le chemin, la requête ou le corps. Un identifiant
+      d'une autre entreprise renvoie `404`, jamais `403`, pour ne pas révéler son existence.
+    - **Permissions.** Chaque opération indique les rôles autorisés dans
+    `x-roles` (`employee`, `manager`
+      (dérivé de la hiérarchie), `hr`, `director`, `platform`). Les contrôles sont faits côté serveur ; `x-roles`
+      documente l'intention, il ne remplace pas le contrôle.
+    - **Sessions.** Cookie `HttpOnly`, `Secure`, `SameSite`. Les requêtes qui
+    modifient des données exigent
+      l'en-tête `X-CSRF-Token`.
+    - **Confidentialité.** Les champs `reason` (motifs) et les justificatifs ne
+    sont renvoyés qu'au demandeur et
+      aux rôles autorisés. Calendriers, notifications et exports génériques ne les contiennent jamais.
+    - **Erreurs.** Format `application/problem+json` (RFC 7807). `404` pour
+    toute ressource hors entreprise.
+
+    - **Pagination.** Par curseur : `limit` et `cursor`, réponse `{ data,
+    next_cursor }`.
+
+    - **Statuts d'exigence.** Les valeurs marquées « À préciser »
+    (demi-journées, solde négatif, demandes
+      urgentes, durée des invitations, etc.) sont paramétrables ; les contrats ci-dessous ne les fixent pas.
+  contact:
+    name: IT Solution
+servers:
+  - url: https://api.example.invalid/v1
+    description: Production (URL à définir)
+  - url: https://api-test.example.invalid/v1
+    description: Test (URL à définir)
+tags:
+  - name: Santé
+    description: Vérification de la disponibilité du service.
+  - name: Authentification
+    description: Inscription, connexion et gestion des sessions.
+  - name: Entreprise
+    description: Gestion des informations et paramètres de l’entreprise.
+  - name: Organisation
+    description: Gestion des départements et de la structure organisationnelle.
+  - name: Employés
+    description: Gestion des employés.
+  - name: Types de congés
+    description: Gestion des types de congés.
+  - name: Circuits de validation
+    description: Configuration des circuits de validation.
+  - name: Demandes de congé
+    description: Création et suivi des demandes de congé.
+  - name: Validations
+    description: Traitement des demandes de validation.
+  - name: Soldes
+    description: Consultation et correction des soldes de congés.
+  - name: Calendrier et disponibilité
+    description: Calendrier des absences et disponibilité des équipes.
+  - name: Tableau de bord
+    description: Indicateurs et statistiques.
+  - name: Exports
+    description: Génération et téléchargement des exports.
+  - name: Notifications
+    description: Gestion des notifications et préférences.
+  - name: Abonnement
+    description: Gestion des offres et abonnements.
+  - name: Support
+    description: Gestion des demandes de support.
+  - name: Audit
+    description: Consultation des journaux d’audit.
+  - name: Plateforme
+    description: Administration globale de la plateforme.
+security:
+  - sessionCookie: []
+    csrfToken: []
+paths:
+  /health:
+    $ref: ./paths/health.yaml#/~1health
+  /auth/register-company:
+    $ref: ./paths/authentication.yaml#/~1auth~1register-company
+  /auth/verify-email:
+    $ref: ./paths/authentication.yaml#/~1auth~1verify-email
+  /auth/login:
+    $ref: ./paths/authentication.yaml#/~1auth~1login
+  /auth/login/verify-otp:
+    $ref: ./paths/authentication.yaml#/~1auth~1login~1verify-otp
+  /auth/logout:
+    $ref: ./paths/authentication.yaml#/~1auth~1logout
+  /auth/logout-all:
+    $ref: ./paths/authentication.yaml#/~1auth~1logout-all
+  /auth/password/forgot:
+    $ref: ./paths/authentication.yaml#/~1auth~1password~1forgot
+  /auth/password/reset:
+    $ref: ./paths/authentication.yaml#/~1auth~1password~1reset
+  /auth/invitations/accept:
+    $ref: ./paths/authentication.yaml#/~1auth~1invitations~1accept
+  /auth/memberships:
+    $ref: ./paths/authentication.yaml#/~1auth~1memberships
+  /auth/select-company:
+    $ref: ./paths/authentication.yaml#/~1auth~1select-company
+  /me:
+    $ref: ./paths/authentication.yaml#/~1me
+  /company:
+    $ref: ./paths/company.yaml#/~1company
+  /company/settings:
+    $ref: ./paths/company.yaml#/~1company~1settings
+  /company/holidays:
+    $ref: ./paths/company.yaml#/~1company~1holidays
+  /company/holidays/{id}:
+    $ref: ./paths/company.yaml#/~1company~1holidays~1{id}
+  /departments:
+    $ref: ./paths/organization.yaml#/~1departments
+  /departments/{id}:
+    $ref: ./paths/organization.yaml#/~1departments~1{id}
+  /employees:
+    $ref: ./paths/employees.yaml#/~1employees
+  /employees/{id}:
+    $ref: ./paths/employees.yaml#/~1employees~1{id}
+  /employees/{id}/deactivate:
+    $ref: ./paths/employees.yaml#/~1employees~1{id}~1deactivate
+  /employees/{id}/reactivate:
+    $ref: ./paths/employees.yaml#/~1employees~1{id}~1reactivate
+  /employees/{id}/invitations:
+    $ref: ./paths/employees.yaml#/~1employees~1{id}~1invitations
+  /employees/imports:
+    $ref: ./paths/employees.yaml#/~1employees~1imports
+  /employees/imports/{id}:
+    $ref: ./paths/employees.yaml#/~1employees~1imports~1{id}
+  /employees/imports/{id}/commit:
+    $ref: ./paths/employees.yaml#/~1employees~1imports~1{id}~1commit
+  /leave-types:
+    $ref: ./paths/leave-management.yaml#/~1leave-types
+  /leave-types/{id}:
+    $ref: ./paths/leave-management.yaml#/~1leave-types~1{id}
+  /leave-types/{id}/policies:
+    $ref: ./paths/leave-management.yaml#/~1leave-types~1{id}~1policies
+  /leave-requests:
+    $ref: ./paths/leave-management.yaml#/~1leave-requests
+  /leave-requests/preview:
+    $ref: ./paths/leave-management.yaml#/~1leave-requests~1preview
+  /leave-requests/{id}:
+    $ref: ./paths/leave-management.yaml#/~1leave-requests~1{id}
+  /leave-requests/{id}/submit:
+    $ref: ./paths/leave-management.yaml#/~1leave-requests~1{id}~1submit
+  /leave-requests/{id}/cancel:
+    $ref: ./paths/leave-management.yaml#/~1leave-requests~1{id}~1cancel
+  /leave-requests/{id}/modification-requests:
+    $ref: ./paths/leave-management.yaml#/~1leave-requests~1{id}~1modification-requests
+  /leave-requests/{id}/attachments:
+    $ref: ./paths/leave-management.yaml#/~1leave-requests~1{id}~1attachments
+  /leave-requests/{id}/attachments/{attachmentId}:
+    $ref: ./paths/leave-management.yaml#/~1leave-requests~1{id}~1attachments~1{attachmentId}
+  /workflows:
+    $ref: ./paths/approval-workflows.yaml#/~1workflows
+  /workflows/{id}:
+    $ref: ./paths/approval-workflows.yaml#/~1workflows~1{id}
+  /approvals:
+    $ref: ./paths/approval-workflows.yaml#/~1approvals
+  /approvals/{id}/approve:
+    $ref: ./paths/approval-workflows.yaml#/~1approvals~1{id}~1approve
+  /approvals/{id}/reject:
+    $ref: ./paths/approval-workflows.yaml#/~1approvals~1{id}~1reject
+  /approvals/bulk:
+    $ref: ./paths/approval-workflows.yaml#/~1approvals~1bulk
+  /approval-delegations:
+    $ref: ./paths/approval-workflows.yaml#/~1approval-delegations
+  /approval-delegations/{id}:
+    $ref: ./paths/approval-workflows.yaml#/~1approval-delegations~1{id}
+  /balances:
+    $ref: ./paths/leave-balances.yaml#/~1balances
+  /employees/{id}/balances:
+    $ref: ./paths/leave-balances.yaml#/~1employees~1{id}~1balances
+  /employees/{id}/ledger:
+    $ref: ./paths/leave-balances.yaml#/~1employees~1{id}~1ledger
+  /balance-adjustments:
+    $ref: ./paths/leave-balances.yaml#/~1balance-adjustments
+  /balance-adjustments/{id}/approve:
+    $ref: ./paths/leave-balances.yaml#/~1balance-adjustments~1{id}~1approve
+  /balance-adjustments/{id}/reject:
+    $ref: ./paths/leave-balances.yaml#/~1balance-adjustments~1{id}~1reject
+  /calendar/me:
+    $ref: ./paths/calendar-availability.yaml#/~1calendar~1me
+  /calendar:
+    $ref: ./paths/calendar-availability.yaml#/~1calendar
+  /absence-limits:
+    $ref: ./paths/calendar-availability.yaml#/~1absence-limits
+  /absence-limits/{id}:
+    $ref: ./paths/calendar-availability.yaml#/~1absence-limits~1{id}
+  /availability/alerts:
+    $ref: ./paths/calendar-availability.yaml#/~1availability~1alerts
+  /dashboard:
+    $ref: ./paths/dashboard-exports.yaml#/~1dashboard
+  /exports:
+    $ref: ./paths/dashboard-exports.yaml#/~1exports
+  /exports/{id}:
+    $ref: ./paths/dashboard-exports.yaml#/~1exports~1{id}
+  /exports/{id}/download:
+    $ref: ./paths/dashboard-exports.yaml#/~1exports~1{id}~1download
+  /notifications:
+    $ref: ./paths/notifications.yaml#/~1notifications
+  /notifications/{id}/read:
+    $ref: ./paths/notifications.yaml#/~1notifications~1{id}~1read
+  /notifications/read-all:
+    $ref: ./paths/notifications.yaml#/~1notifications~1read-all
+  /notification-preferences:
+    $ref: ./paths/notifications.yaml#/~1notification-preferences
+  /plans:
+    $ref: ./paths/subscription.yaml#/~1plans
+  /subscription:
+    $ref: ./paths/subscription.yaml#/~1subscription
+  /subscription-requests:
+    $ref: ./paths/subscription.yaml#/~1subscription-requests
+  /support/tickets:
+    $ref: ./paths/support.yaml#/~1support~1tickets
+  /support/tickets/{id}/messages:
+    $ref: ./paths/support.yaml#/~1support~1tickets~1{id}~1messages
+  /audit-logs:
+    $ref: ./paths/audit.yaml#/~1audit-logs
+  /platform/auth/login:
+    $ref: ./paths/platform.yaml#/~1platform~1auth~1login
+  /platform/auth/login/verify-otp:
+    $ref: ./paths/platform.yaml#/~1platform~1auth~1login~1verify-otp
+  /platform/companies:
+    $ref: ./paths/platform.yaml#/~1platform~1companies
+  /platform/companies/{id}:
+    $ref: ./paths/platform.yaml#/~1platform~1companies~1{id}
+  /platform/companies/{id}/suspend:
+    $ref: ./paths/platform.yaml#/~1platform~1companies~1{id}~1suspend
+  /platform/companies/{id}/reactivate:
+    $ref: ./paths/platform.yaml#/~1platform~1companies~1{id}~1reactivate
+  /platform/subscription-requests:
+    $ref: ./paths/platform.yaml#/~1platform~1subscription-requests
+  /platform/subscription-requests/{id}/decision:
+    $ref: ./paths/platform.yaml#/~1platform~1subscription-requests~1{id}~1decision
+  /platform/plans:
+    $ref: ./paths/platform.yaml#/~1platform~1plans
+  /platform/plans/{id}:
+    $ref: ./paths/platform.yaml#/~1platform~1plans~1{id}
+  /platform/incidents:
+    $ref: ./paths/platform.yaml#/~1platform~1incidents
+  /platform/incidents/{id}:
+    $ref: ./paths/platform.yaml#/~1platform~1incidents~1{id}
+  /platform/incidents/{id}/updates:
+    $ref: ./paths/platform.yaml#/~1platform~1incidents~1{id}~1updates
+  /platform/support/tickets:
+    $ref: ./paths/platform.yaml#/~1platform~1support~1tickets
+  /platform/admins:
+    $ref: ./paths/platform.yaml#/~1platform~1admins
+  /platform/roles:
+    $ref: ./paths/platform.yaml#/~1platform~1roles
+  /platform/access-grants:
+    $ref: ./paths/platform.yaml#/~1platform~1access-grants
+  /platform/access-grants/{id}/approve:
+    $ref: ./paths/platform.yaml#/~1platform~1access-grants~1{id}~1approve
+  /platform/access-grants/{id}/revoke:
+    $ref: ./paths/platform.yaml#/~1platform~1access-grants~1{id}~1revoke
+components:
+  securitySchemes:
+    sessionCookie:
+      $ref: ./common/security.yaml#/securitySchemes/sessionCookie
+    platformSessionCookie:
+      $ref: ./common/security.yaml#/securitySchemes/platformSessionCookie
+    csrfToken:
+      $ref: ./common/security.yaml#/securitySchemes/csrfToken
+  parameters:
+    Id:
+      $ref: ./common/parameters.yaml#/parameters/Id
+    Limit:
+      $ref: ./common/parameters.yaml#/parameters/Limit
+    Cursor:
+      $ref: ./common/parameters.yaml#/parameters/Cursor
+    From:
+      $ref: ./common/parameters.yaml#/parameters/From
+    To:
+      $ref: ./common/parameters.yaml#/parameters/To
+    IdempotencyKey:
+      $ref: ./common/parameters.yaml#/parameters/IdempotencyKey
+  responses:
+    BadRequest:
+      $ref: ./common/responses.yaml#/responses/BadRequest
+    Unauthorized:
+      $ref: ./common/responses.yaml#/responses/Unauthorized
+    Forbidden:
+      $ref: ./common/responses.yaml#/responses/Forbidden
+    NotFound:
+      $ref: ./common/responses.yaml#/responses/NotFound
+    Conflict:
+      $ref: ./common/responses.yaml#/responses/Conflict
+    ValidationError:
+      $ref: ./common/responses.yaml#/responses/ValidationError
+    PayloadTooLarge:
+      $ref: ./common/responses.yaml#/responses/PayloadTooLarge
+    TooManyRequests:
+      $ref: ./common/responses.yaml#/responses/TooManyRequests
+  schemas:
+    Problem:
+      $ref: ./common/schemas.yaml#/schemas/Problem
+    Membership:
+      $ref: ./schemas/authentication.yaml#/Membership
+    Me:
+      $ref: ./schemas/authentication.yaml#/Me
+    CompanyStatus:
+      $ref: ./schemas/company.yaml#/CompanyStatus
+    Company:
+      $ref: ./schemas/company.yaml#/Company
+    CompanySettings:
+      $ref: ./schemas/company.yaml#/CompanySettings
+    HolidayInput:
+      $ref: ./schemas/company.yaml#/HolidayInput
+    Holiday:
+      $ref: ./schemas/company.yaml#/Holiday
+    EmployeeRole:
+      $ref: ./schemas/employee.yaml#/EmployeeRole
+    EmployeeStatus:
+      $ref: ./schemas/employee.yaml#/EmployeeStatus
+    DepartmentInput:
+      $ref: ./schemas/employee.yaml#/DepartmentInput
+    Department:
+      $ref: ./schemas/employee.yaml#/Department
+    EmployeeInput:
+      $ref: ./schemas/employee.yaml#/EmployeeInput
+    EmployeeUpdate:
+      $ref: ./schemas/employee.yaml#/EmployeeUpdate
+    Employee:
+      $ref: ./schemas/employee.yaml#/Employee
+    ImportJob:
+      $ref: ./schemas/employee.yaml#/ImportJob
+    LeaveRequestStatus:
+      $ref: ./schemas/leave.yaml#/LeaveRequestStatus
+    AttachmentPolicy:
+      $ref: ./schemas/leave.yaml#/AttachmentPolicy
+    ScanStatus:
+      $ref: ./schemas/leave.yaml#/ScanStatus
+    DayPart:
+      $ref: ./schemas/leave.yaml#/DayPart
+    LeaveTypeInput:
+      $ref: ./schemas/leave.yaml#/LeaveTypeInput
+    LeaveType:
+      $ref: ./schemas/leave.yaml#/LeaveType
+    LeavePolicyInput:
+      $ref: ./schemas/leave.yaml#/LeavePolicyInput
+    LeavePolicy:
+      $ref: ./schemas/leave.yaml#/LeavePolicy
+    LeaveRequestInput:
+      $ref: ./schemas/leave.yaml#/LeaveRequestInput
+    LeaveRequestPreview:
+      $ref: ./schemas/leave.yaml#/LeaveRequestPreview
+    LeaveRequest:
+      $ref: ./schemas/leave.yaml#/LeaveRequest
+    Attachment:
+      $ref: ./schemas/leave.yaml#/Attachment
+    ApprovalTaskStatus:
+      $ref: ./schemas/approval.yaml#/ApprovalTaskStatus
+    ApproverKind:
+      $ref: ./schemas/approval.yaml#/ApproverKind
+    WorkflowStep:
+      $ref: ./schemas/approval.yaml#/WorkflowStep
+    WorkflowInput:
+      $ref: ./schemas/approval.yaml#/WorkflowInput
+    Workflow:
+      $ref: ./schemas/approval.yaml#/Workflow
+    Decision:
+      $ref: ./schemas/approval.yaml#/Decision
+    ApprovalTask:
+      $ref: ./schemas/approval.yaml#/ApprovalTask
+    Delegation:
+      $ref: ./schemas/approval.yaml#/Delegation
+    AdjustmentStatus:
+      $ref: ./schemas/balance.yaml#/AdjustmentStatus
+    LedgerEntryType:
+      $ref: ./schemas/balance.yaml#/LedgerEntryType
+    EmployeeSummary:
+      $ref: ./schemas/balance.yaml#/EmployeeSummary
+    Balance:
+      $ref: ./schemas/balance.yaml#/Balance
+    LedgerEntry:
+      $ref: ./schemas/balance.yaml#/LedgerEntry
+    BalanceAdjustment:
+      $ref: ./schemas/balance.yaml#/BalanceAdjustment
+    CalendarEntry:
+      $ref: ./schemas/calendar.yaml#/CalendarEntry
+    Calendar:
+      $ref: ./schemas/calendar.yaml#/Calendar
+    AbsenceLimitInput:
+      $ref: ./schemas/calendar.yaml#/AbsenceLimitInput
+    AbsenceLimit:
+      $ref: ./schemas/calendar.yaml#/AbsenceLimit
+    AvailabilityAlert:
+      $ref: ./schemas/calendar.yaml#/AvailabilityAlert
+    Dashboard:
+      $ref: ./schemas/calendar.yaml#/Dashboard
+    Notification:
+      $ref: ./schemas/notification.yaml#/Notification
+    NotificationPreference:
+      $ref: ./schemas/notification.yaml#/NotificationPreference
+    RequestStatus:
+      $ref: ./schemas/subscription.yaml#/RequestStatus
+    SubscriptionStatus:
+      $ref: ./schemas/subscription.yaml#/SubscriptionStatus
+    PlanInput:
+      $ref: ./schemas/subscription.yaml#/PlanInput
+    Plan:
+      $ref: ./schemas/subscription.yaml#/Plan
+    Subscription:
+      $ref: ./schemas/subscription.yaml#/Subscription
+    SubscriptionRequest:
+      $ref: ./schemas/subscription.yaml#/SubscriptionRequest
+    TicketKind:
+      $ref: ./schemas/support.yaml#/TicketKind
+    TicketStatus:
+      $ref: ./schemas/support.yaml#/TicketStatus
+    SupportTicket:
+      $ref: ./schemas/support.yaml#/SupportTicket
+    TicketMessage:
+      $ref: ./schemas/support.yaml#/TicketMessage
+    JobStatus:
+      $ref: ./schemas/platform.yaml#/JobStatus
+    ExportFormat:
+      $ref: ./schemas/platform.yaml#/ExportFormat
+    SeverityLevel:
+      $ref: ./schemas/platform.yaml#/SeverityLevel
+    IncidentStatus:
+      $ref: ./schemas/platform.yaml#/IncidentStatus
+    ExportJob:
+      $ref: ./schemas/platform.yaml#/ExportJob
+    PlatformCompany:
+      $ref: ./schemas/platform.yaml#/PlatformCompany
+    IncidentInput:
+      $ref: ./schemas/platform.yaml#/IncidentInput
+    Incident:
+      $ref: ./schemas/platform.yaml#/Incident
+    PlatformAdmin:
+      $ref: ./schemas/platform.yaml#/PlatformAdmin
+    PlatformRole:
+      $ref: ./schemas/platform.yaml#/PlatformRole
+    AccessGrant:
+      $ref: ./schemas/platform.yaml#/AccessGrant
+    AuditLog:
+      $ref: ./schemas/audit.yaml#/AuditLog

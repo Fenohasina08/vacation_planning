@@ -1,0 +1,46 @@
+Notification:
+  type: object
+  required:
+  - id
+  - event_type
+  - title
+  - created_at
+  properties:
+    id:
+      type: string
+      format: uuid
+    event_type:
+      type: string
+    title:
+      type: string
+    body:
+      type: string
+      nullable: true
+      description: Contenu minimal, jamais de motif
+    entity_type:
+      type: string
+      nullable: true
+    entity_id:
+      type: string
+      format: uuid
+      nullable: true
+    read_at:
+      type: string
+      format: date-time
+      nullable: true
+    created_at:
+      type: string
+      format: date-time
+NotificationPreference:
+  type: object
+  required:
+  - event_type
+  - in_app
+  - email
+  properties:
+    event_type:
+      type: string
+    in_app:
+      type: boolean
+    email:
+      type: boolean

@@ -1,0 +1,205 @@
+JobStatus:
+  type: string
+  enum:
+  - queued
+  - running
+  - succeeded
+  - failed
+  - expired
+ExportFormat:
+  type: string
+  enum:
+  - pdf
+  - xlsx
+  - csv
+SeverityLevel:
+  type: string
+  enum:
+  - low
+  - medium
+  - high
+  - critical
+IncidentStatus:
+  type: string
+  enum:
+  - detected
+  - investigating
+  - mitigated
+  - resolved
+  - closed
+ExportJob:
+  type: object
+  required:
+  - id
+  - kind
+  - format
+  - status
+  properties:
+    id:
+      type: string
+      format: uuid
+    kind:
+      type: string
+    format:
+      $ref: ../openapi.yaml#/components/schemas/ExportFormat
+    status:
+      $ref: ../openapi.yaml#/components/schemas/JobStatus
+    expires_at:
+      type: string
+      format: date-time
+      nullable: true
+    created_at:
+      type: string
+      format: date-time
+    finished_at:
+      type: string
+      format: date-time
+      nullable: true
+PlatformCompany:
+  type: object
+  required:
+  - id
+  - name
+  - status
+  properties:
+    id:
+      type: string
+      format: uuid
+    name:
+      type: string
+    status:
+      $ref: ../openapi.yaml#/components/schemas/CompanyStatus
+    country_code:
+      type: string
+      nullable: true
+    employee_count:
+      type: integer
+    subscription_status:
+      $ref: ../openapi.yaml#/components/schemas/SubscriptionStatus
+    plan_code:
+      type: string
+      nullable: true
+    created_at:
+      type: string
+      format: date-time
+IncidentInput:
+  type: object
+  properties:
+    title:
+      type: string
+    description:
+      type: string
+    severity:
+      $ref: ../openapi.yaml#/components/schemas/SeverityLevel
+    status:
+      $ref: ../openapi.yaml#/components/schemas/IncidentStatus
+    affected_company_ids:
+      type: array
+      items:
+        type: string
+        format: uuid
+    root_cause:
+      type: string
+      nullable: true
+    preventive_measures:
+      type: string
+      nullable: true
+Incident:
+  allOf:
+  - $ref: ../openapi.yaml#/components/schemas/IncidentInput
+  - type: object
+    required:
+    - id
+    - title
+    - severity
+    - status
+    properties:
+      id:
+        type: string
+        format: uuid
+      detected_at:
+        type: string
+        format: date-time
+      resolved_at:
+        type: string
+        format: date-time
+        nullable: true
+      customer_communication_sent_at:
+        type: string
+        format: date-time
+        nullable: true
+PlatformAdmin:
+  type: object
+  required:
+  - id
+  - email
+  - platform_role_id
+  - is_active
+  properties:
+    id:
+      type: string
+      format: uuid
+    email:
+      type: string
+      format: email
+    platform_role_id:
+      type: string
+      format: uuid
+    is_active:
+      type: boolean
+    created_at:
+      type: string
+      format: date-time
+PlatformRole:
+  type: object
+  required:
+  - id
+  - code
+  - name
+  - permissions
+  properties:
+    id:
+      type: string
+      format: uuid
+    code:
+      type: string
+    name:
+      type: string
+    permissions:
+      type: array
+      items:
+        type: string
+AccessGrant:
+  type: object
+  required:
+  - id
+  - company_id
+  - platform_admin_id
+  - reason
+  - expires_at
+  properties:
+    id:
+      type: string
+      format: uuid
+    company_id:
+      type: string
+      format: uuid
+    platform_admin_id:
+      type: string
+      format: uuid
+    approved_by_platform_admin_id:
+      type: string
+      format: uuid
+      nullable: true
+    reason:
+      type: string
+    granted_at:
+      type: string
+      format: date-time
+    expires_at:
+      type: string
+      format: date-time
+    revoked_at:
+      type: string
+      format: date-time
+      nullable: true

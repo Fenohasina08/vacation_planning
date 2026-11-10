@@ -1,0 +1,209 @@
+/balances:
+  get:
+    tags:
+    - Soldes
+    operationId: listMyBalances
+    summary: Soldes de l'utilisateur connecté par type de congé (FONC-060)
+    x-roles:
+    - employee
+    - manager
+    - hr
+    - director
+    responses:
+      '200':
+        description: Soldes
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: ../openapi.yaml#/components/schemas/Balance
+/employees/{id}/balances:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/Id
+  get:
+    tags:
+    - Soldes
+    operationId: listEmployeeBalances
+    summary: Soldes d'un employé
+    x-roles:
+    - hr
+    responses:
+      '200':
+        description: Soldes
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: ../openapi.yaml#/components/schemas/Balance
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+/employees/{id}/ledger:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/Id
+  get:
+    tags:
+    - Soldes
+    operationId: listEmployeeLedger
+    summary: Journal de mouvements de solde (ajout seul)
+    x-roles:
+    - employee
+    - hr
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/Limit
+    - $ref: ../openapi.yaml#/components/parameters/Cursor
+    - name: leave_type_id
+      in: query
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '200':
+        description: Page de mouvements
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: ../openapi.yaml#/components/schemas/LedgerEntry
+                next_cursor:
+                  type: string
+                  nullable: true
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+/balance-adjustments:
+  get:
+    tags:
+    - Soldes
+    operationId: listBalanceAdjustments
+    summary: Corrections manuelles de solde
+    x-roles:
+    - hr
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/Limit
+    - $ref: ../openapi.yaml#/components/parameters/Cursor
+    - name: status
+      in: query
+      schema:
+        $ref: ../openapi.yaml#/components/schemas/AdjustmentStatus
+    responses:
+      '200':
+        description: Page de corrections
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: ../openapi.yaml#/components/schemas/BalanceAdjustment
+                next_cursor:
+                  type: string
+                  nullable: true
+  post:
+    tags:
+    - Soldes
+    operationId: createBalanceAdjustment
+    summary: Corriger un solde avec motif obligatoire ; validation supplémentaire si configurée (FONC-061 à 063)
+    x-roles:
+    - hr
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - employee_id
+            - leave_type_id
+            - new_value
+            - reason
+            properties:
+              employee_id:
+                type: string
+                format: uuid
+              leave_type_id:
+                type: string
+                format: uuid
+              new_value:
+                type: number
+                description: Nouveau solde disponible
+              reason:
+                type: string
+                minLength: 5
+    responses:
+      '201':
+        description: Correction enregistrée (appliquée ou en attente de validation)
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/BalanceAdjustment
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+      '422':
+        $ref: ../openapi.yaml#/components/responses/ValidationError
+/balance-adjustments/{id}/approve:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/Id
+  post:
+    tags:
+    - Soldes
+    operationId: approveBalanceAdjustment
+    summary: Valider une correction (l'approbateur diffère du demandeur)
+    x-roles:
+    - hr
+    responses:
+      '200':
+        description: Correction appliquée
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/BalanceAdjustment
+      '403':
+        $ref: ../openapi.yaml#/components/responses/Forbidden
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+      '409':
+        $ref: ../openapi.yaml#/components/responses/Conflict
+/balance-adjustments/{id}/reject:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/Id
+  post:
+    tags:
+    - Soldes
+    operationId: rejectBalanceAdjustment
+    summary: Refuser une correction
+    x-roles:
+    - hr
+    responses:
+      '200':
+        description: Correction refusée
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/BalanceAdjustment
+      '403':
+        $ref: ../openapi.yaml#/components/responses/Forbidden
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+      '409':
+        $ref: ../openapi.yaml#/components/responses/Conflict

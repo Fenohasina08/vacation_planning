@@ -1,0 +1,16 @@
+securitySchemes:
+  sessionCookie:
+    type: apiKey
+    in: cookie
+    name: __Host-session
+    description: Session employé (HttpOnly, Secure, SameSite). L'entreprise active est portée par la session côté serveur.
+  platformSessionCookie:
+    type: apiKey
+    in: cookie
+    name: __Host-platform-session
+    description: Session administrateur de plateforme (distincte de la session employé).
+  csrfToken:
+    type: apiKey
+    in: header
+    name: X-CSRF-Token
+    description: Obligatoire pour les requêtes qui modifient des données.

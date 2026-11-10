@@ -1,0 +1,267 @@
+/employees:
+  get:
+    tags:
+    - Employés
+    operationId: listEmployees
+    summary: Lister les employés visibles par l'utilisateur
+    x-roles:
+    - manager
+    - hr
+    - director
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/Limit
+    - $ref: ../openapi.yaml#/components/parameters/Cursor
+    - name: department_id
+      in: query
+      schema:
+        type: string
+        format: uuid
+    - name: status
+      in: query
+      schema:
+        $ref: ../openapi.yaml#/components/schemas/EmployeeStatus
+    - name: q
+      in: query
+      description: Recherche par nom ou courriel
+      schema:
+        type: string
+    responses:
+      '200':
+        description: Page d'employés
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: ../openapi.yaml#/components/schemas/Employee
+                next_cursor:
+                  type: string
+                  nullable: true
+  post:
+    tags:
+    - Employés
+    operationId: createEmployee
+    summary: Créer un employé et envoyer l'invitation (FONC-010)
+    x-roles:
+    - hr
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/EmployeeInput
+    responses:
+      '201':
+        description: Employé créé
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Employee
+      '409':
+        $ref: ../openapi.yaml#/components/responses/Conflict
+      '422':
+        $ref: ../openapi.yaml#/components/responses/ValidationError
+/employees/{id}:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/Id
+  get:
+    tags:
+    - Employés
+    operationId: getEmployee
+    summary: Détail d'un employé
+    x-roles:
+    - employee
+    - manager
+    - hr
+    - director
+    responses:
+      '200':
+        description: Employé
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Employee
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+  patch:
+    tags:
+    - Employés
+    operationId: updateEmployee
+    summary: Modifier un employé ; champs sensibles contrôlés et journalisés (FONC-015)
+    x-roles:
+    - hr
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/EmployeeUpdate
+    responses:
+      '200':
+        description: Employé modifié
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Employee
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+      '422':
+        $ref: ../openapi.yaml#/components/responses/ValidationError
+/employees/{id}/deactivate:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/Id
+  post:
+    tags:
+    - Employés
+    operationId: deactivateEmployee
+    summary: Désactiver un employé sortant ; l'historique est conservé (FONC-016)
+    x-roles:
+    - hr
+    requestBody:
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              end_date:
+                type: string
+                format: date
+              pending_requests_action:
+                type: string
+                enum:
+                - cancel
+                - reassign
+                description: Traitement des demandes en attente (RG-011)
+    responses:
+      '200':
+        description: Employé désactivé
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Employee
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+      '409':
+        $ref: ../openapi.yaml#/components/responses/Conflict
+/employees/{id}/reactivate:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/Id
+  post:
+    tags:
+    - Employés
+    operationId: reactivateEmployee
+    summary: Réactiver un compte désactivé
+    x-roles:
+    - hr
+    responses:
+      '200':
+        description: Employé réactivé
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Employee
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+      '409':
+        $ref: ../openapi.yaml#/components/responses/Conflict
+/employees/{id}/invitations:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/Id
+  post:
+    tags:
+    - Employés
+    operationId: resendInvitation
+    summary: Renvoyer l'invitation (les précédentes sont révoquées)
+    x-roles:
+    - hr
+    responses:
+      '202':
+        description: Invitation envoyée
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+      '409':
+        $ref: ../openapi.yaml#/components/responses/Conflict
+      '429':
+        $ref: ../openapi.yaml#/components/responses/TooManyRequests
+/employees/imports:
+  post:
+    tags:
+    - Employés
+    operationId: createEmployeeImport
+    summary: Importer des employés depuis un fichier CSV ou Excel (FONC-011)
+    description: Traitement asynchrone. Un aperçu avec rapport d'erreurs est produit ; aucune ligne invalide n'est importée
+      silencieusement (FONC-012).
+    x-roles:
+    - hr
+    requestBody:
+      required: true
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            required:
+            - file
+            properties:
+              file:
+                type: string
+                format: binary
+              dry_run:
+                type: boolean
+                default: true
+                description: Si vrai, valide sans importer
+    responses:
+      '202':
+        description: Import accepté
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ImportJob
+      '413':
+        $ref: ../openapi.yaml#/components/responses/PayloadTooLarge
+      '422':
+        $ref: ../openapi.yaml#/components/responses/ValidationError
+/employees/imports/{id}:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/Id
+  get:
+    tags:
+    - Employés
+    operationId: getEmployeeImport
+    summary: État et rapport d'erreurs d'un import
+    x-roles:
+    - hr
+    responses:
+      '200':
+        description: Import
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ImportJob
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+/employees/imports/{id}/commit:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/Id
+  post:
+    tags:
+    - Employés
+    operationId: commitEmployeeImport
+    summary: Confirmer un import validé à blanc
+    x-roles:
+    - hr
+    responses:
+      '202':
+        description: Import lancé
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ImportJob
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+      '409':
+        $ref: ../openapi.yaml#/components/responses/Conflict

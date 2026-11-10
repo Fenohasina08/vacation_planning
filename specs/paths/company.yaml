@@ -1,0 +1,161 @@
+/company:
+  get:
+    tags:
+    - Entreprise
+    operationId: getCompany
+    summary: Entreprise active
+    x-roles:
+    - employee
+    - manager
+    - hr
+    - director
+    responses:
+      '200':
+        description: Entreprise
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Company
+  patch:
+    tags:
+    - Entreprise
+    operationId: updateCompany
+    summary: Modifier le nom, le pays ou le fuseau horaire
+    x-roles:
+    - hr
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              name:
+                type: string
+              country_code:
+                type: string
+                minLength: 2
+                maxLength: 2
+              timezone:
+                type: string
+                example: Indian/Antananarivo
+    responses:
+      '200':
+        description: Entreprise modifiée
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Company
+      '403':
+        $ref: ../openapi.yaml#/components/responses/Forbidden
+      '422':
+        $ref: ../openapi.yaml#/components/responses/ValidationError
+/company/settings:
+  get:
+    tags:
+    - Entreprise
+    operationId: getCompanySettings
+    summary: Paramètres de l'entreprise
+    x-roles:
+    - hr
+    - director
+    responses:
+      '200':
+        description: Paramètres
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CompanySettings
+  patch:
+    tags:
+    - Entreprise
+    operationId: updateCompanySettings
+    summary: Modifier les paramètres (jours ouvrés, règles, validations) — journalisé
+    x-roles:
+    - hr
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/CompanySettings
+    responses:
+      '200':
+        description: Paramètres modifiés
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/CompanySettings
+      '403':
+        $ref: ../openapi.yaml#/components/responses/Forbidden
+      '422':
+        $ref: ../openapi.yaml#/components/responses/ValidationError
+/company/holidays:
+  get:
+    tags:
+    - Entreprise
+    operationId: listHolidays
+    summary: Jours fériés
+    x-roles:
+    - employee
+    - manager
+    - hr
+    - director
+    parameters:
+    - name: year
+      in: query
+      schema:
+        type: integer
+    responses:
+      '200':
+        description: Jours fériés
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: ../openapi.yaml#/components/schemas/Holiday
+  post:
+    tags:
+    - Entreprise
+    operationId: createHoliday
+    summary: Ajouter un jour férié
+    x-roles:
+    - hr
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/HolidayInput
+    responses:
+      '201':
+        description: Jour férié créé
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Holiday
+      '409':
+        $ref: ../openapi.yaml#/components/responses/Conflict
+      '422':
+        $ref: ../openapi.yaml#/components/responses/ValidationError
+/company/holidays/{id}:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/Id
+  delete:
+    tags:
+    - Entreprise
+    operationId: deleteHoliday
+    summary: Supprimer un jour férié
+    x-roles:
+    - hr
+    responses:
+      '204':
+        description: Supprimé
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound

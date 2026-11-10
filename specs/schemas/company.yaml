@@ -1,0 +1,85 @@
+CompanyStatus:
+  type: string
+  enum:
+  - pending_verification
+  - active
+  - suspended
+  - closed
+Company:
+  type: object
+  required:
+  - id
+  - name
+  - status
+  properties:
+    id:
+      type: string
+      format: uuid
+    name:
+      type: string
+    status:
+      $ref: ../openapi.yaml#/components/schemas/CompanyStatus
+    country_code:
+      type: string
+      nullable: true
+    timezone:
+      type: string
+      nullable: true
+    created_at:
+      type: string
+      format: date-time
+CompanySettings:
+  type: object
+  properties:
+    working_days:
+      type: array
+      description: Jours ISO, 1 = lundi à 7 = dimanche
+      items:
+        type: integer
+        minimum: 1
+        maximum: 7
+      minItems: 1
+      uniqueItems: true
+    allow_half_days:
+      type: boolean
+    allow_negative_balance:
+      type: boolean
+    count_pending_in_available:
+      type: boolean
+    rejection_reason_required:
+      type: boolean
+    adjustment_requires_approval:
+      type: boolean
+    post_approval_cancellation:
+      type: string
+      enum:
+      - not_allowed
+      - before_start
+      - request_approval
+    urgent_rules:
+      type: object
+      additionalProperties: true
+HolidayInput:
+  type: object
+  required:
+  - holiday_date
+  - label
+  properties:
+    holiday_date:
+      type: string
+      format: date
+    label:
+      type: string
+    is_recurring:
+      type: boolean
+      default: false
+Holiday:
+  allOf:
+  - $ref: ../openapi.yaml#/components/schemas/HolidayInput
+  - type: object
+    required:
+    - id
+    properties:
+      id:
+        type: string
+        format: uuid

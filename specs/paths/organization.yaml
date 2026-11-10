@@ -1,0 +1,90 @@
+/departments:
+  get:
+    tags:
+    - Organisation
+    operationId: listDepartments
+    summary: Départements et services
+    x-roles:
+    - employee
+    - manager
+    - hr
+    - director
+    responses:
+      '200':
+        description: Liste
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: ../openapi.yaml#/components/schemas/Department
+  post:
+    tags:
+    - Organisation
+    operationId: createDepartment
+    summary: Créer un département ou un service
+    x-roles:
+    - hr
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/DepartmentInput
+    responses:
+      '201':
+        description: Créé
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Department
+      '409':
+        $ref: ../openapi.yaml#/components/responses/Conflict
+      '422':
+        $ref: ../openapi.yaml#/components/responses/ValidationError
+/departments/{id}:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/Id
+  patch:
+    tags:
+    - Organisation
+    operationId: updateDepartment
+    summary: Modifier un département
+    x-roles:
+    - hr
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/DepartmentInput
+    responses:
+      '200':
+        description: Modifié
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Department
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+      '422':
+        $ref: ../openapi.yaml#/components/responses/ValidationError
+  delete:
+    tags:
+    - Organisation
+    operationId: deleteDepartment
+    summary: Supprimer un département vide
+    x-roles:
+    - hr
+    responses:
+      '204':
+        description: Supprimé
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+      '409':
+        $ref: ../openapi.yaml#/components/responses/Conflict

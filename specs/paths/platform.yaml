@@ -1,0 +1,679 @@
+/platform/auth/login:
+  post:
+    tags:
+    - Plateforme
+    operationId: platformLogin
+    summary: Connexion d'un administrateur de plateforme (étape 1) ; MFA obligatoire
+    security: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - email
+            - password
+            properties:
+              email:
+                type: string
+                format: email
+              password:
+                type: string
+                format: password
+    responses:
+      '200':
+        description: Code de vérification envoyé
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - challenge_id
+              properties:
+                challenge_id:
+                  type: string
+                  format: uuid
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Unauthorized
+      '429':
+        $ref: ../openapi.yaml#/components/responses/TooManyRequests
+/platform/auth/login/verify-otp:
+  post:
+    tags:
+    - Plateforme
+    operationId: platformVerifyOtp
+    summary: Code de vérification (étape 2) et ouverture de session plateforme
+    security: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - challenge_id
+            - code
+            properties:
+              challenge_id:
+                type: string
+                format: uuid
+              code:
+                type: string
+                pattern: ^[0-9]{6}$
+    responses:
+      '200':
+        description: Session plateforme ouverte (cookie)
+        headers:
+          Set-Cookie:
+            schema:
+              type: string
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Unauthorized
+      '429':
+        $ref: ../openapi.yaml#/components/responses/TooManyRequests
+/platform/companies:
+  get:
+    tags:
+    - Plateforme
+    operationId: platformListCompanies
+    summary: Entreprises (identité, statut, abonnement ; aucune donnée métier)
+    x-roles:
+    - platform
+    security:
+    - platformSessionCookie: []
+      csrfToken: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/Limit
+    - $ref: ../openapi.yaml#/components/parameters/Cursor
+    - name: status
+      in: query
+      schema:
+        $ref: ../openapi.yaml#/components/schemas/CompanyStatus
+    responses:
+      '200':
+        description: Page d'entreprises
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: ../openapi.yaml#/components/schemas/PlatformCompany
+                next_cursor:
+                  type: string
+                  nullable: true
+      '403':
+        $ref: ../openapi.yaml#/components/responses/Forbidden
+/platform/companies/{id}:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/Id
+  get:
+    tags:
+    - Plateforme
+    operationId: platformGetCompany
+    summary: Détail d'une entreprise
+    x-roles:
+    - platform
+    security:
+    - platformSessionCookie: []
+      csrfToken: []
+    responses:
+      '200':
+        description: Entreprise
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/PlatformCompany
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+/platform/companies/{id}/suspend:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/Id
+  post:
+    tags:
+    - Plateforme
+    operationId: platformSuspendCompany
+    summary: Suspendre une entreprise (motif obligatoire, journalisé)
+    x-roles:
+    - platform
+    security:
+    - platformSessionCookie: []
+      csrfToken: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - reason
+            properties:
+              reason:
+                type: string
+                minLength: 10
+    responses:
+      '200':
+        description: Entreprise suspendue
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/PlatformCompany
+      '403':
+        $ref: ../openapi.yaml#/components/responses/Forbidden
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+/platform/companies/{id}/reactivate:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/Id
+  post:
+    tags:
+    - Plateforme
+    operationId: platformReactivateCompany
+    summary: Réactiver une entreprise suspendue
+    x-roles:
+    - platform
+    security:
+    - platformSessionCookie: []
+      csrfToken: []
+    responses:
+      '200':
+        description: Entreprise réactivée
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/PlatformCompany
+      '403':
+        $ref: ../openapi.yaml#/components/responses/Forbidden
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+/platform/subscription-requests:
+  get:
+    tags:
+    - Plateforme
+    operationId: platformListSubscriptionRequests
+    summary: Demandes de changement d'abonnement à valider
+    x-roles:
+    - platform
+    security:
+    - platformSessionCookie: []
+      csrfToken: []
+    parameters:
+    - name: status
+      in: query
+      schema:
+        $ref: ../openapi.yaml#/components/schemas/RequestStatus
+    responses:
+      '200':
+        description: Liste
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: ../openapi.yaml#/components/schemas/SubscriptionRequest
+/platform/subscription-requests/{id}/decision:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/Id
+  post:
+    tags:
+    - Plateforme
+    operationId: platformDecideSubscriptionRequest
+    summary: Valider ou refuser un changement d'abonnement
+    x-roles:
+    - platform
+    security:
+    - platformSessionCookie: []
+      csrfToken: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - decision
+            properties:
+              decision:
+                type: string
+                enum:
+                - approved
+                - rejected
+              note:
+                type: string
+    responses:
+      '200':
+        description: Décision enregistrée
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/SubscriptionRequest
+      '403':
+        $ref: ../openapi.yaml#/components/responses/Forbidden
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+      '409':
+        $ref: ../openapi.yaml#/components/responses/Conflict
+/platform/plans:
+  get:
+    tags:
+    - Plateforme
+    operationId: platformListPlans
+    summary: Offres (inclut les offres inactives)
+    x-roles:
+    - platform
+    security:
+    - platformSessionCookie: []
+      csrfToken: []
+    responses:
+      '200':
+        description: Offres
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: ../openapi.yaml#/components/schemas/Plan
+  post:
+    tags:
+    - Plateforme
+    operationId: platformCreatePlan
+    summary: Créer une offre (les valeurs commerciales sont saisies par IT Solution)
+    x-roles:
+    - platform
+    security:
+    - platformSessionCookie: []
+      csrfToken: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/PlanInput
+    responses:
+      '201':
+        description: Offre créée
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Plan
+      '403':
+        $ref: ../openapi.yaml#/components/responses/Forbidden
+      '409':
+        $ref: ../openapi.yaml#/components/responses/Conflict
+      '422':
+        $ref: ../openapi.yaml#/components/responses/ValidationError
+/platform/plans/{id}:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/Id
+  patch:
+    tags:
+    - Plateforme
+    operationId: platformUpdatePlan
+    summary: Modifier une offre
+    x-roles:
+    - platform
+    security:
+    - platformSessionCookie: []
+      csrfToken: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/PlanInput
+    responses:
+      '200':
+        description: Offre modifiée
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Plan
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+      '422':
+        $ref: ../openapi.yaml#/components/responses/ValidationError
+/platform/incidents:
+  get:
+    tags:
+    - Plateforme
+    operationId: platformListIncidents
+    summary: Incidents de service
+    x-roles:
+    - platform
+    security:
+    - platformSessionCookie: []
+      csrfToken: []
+    parameters:
+    - name: status
+      in: query
+      schema:
+        $ref: ../openapi.yaml#/components/schemas/IncidentStatus
+    responses:
+      '200':
+        description: Liste
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: ../openapi.yaml#/components/schemas/Incident
+  post:
+    tags:
+    - Plateforme
+    operationId: platformCreateIncident
+    summary: Enregistrer un incident (gravité, entreprises concernées)
+    x-roles:
+    - platform
+    security:
+    - platformSessionCookie: []
+      csrfToken: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/IncidentInput
+    responses:
+      '201':
+        description: Incident créé
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Incident
+      '403':
+        $ref: ../openapi.yaml#/components/responses/Forbidden
+      '422':
+        $ref: ../openapi.yaml#/components/responses/ValidationError
+/platform/incidents/{id}:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/Id
+  patch:
+    tags:
+    - Plateforme
+    operationId: platformUpdateIncident
+    summary: Mettre à jour un incident (statut, cause, mesures préventives, résolution)
+    x-roles:
+    - platform
+    security:
+    - platformSessionCookie: []
+      csrfToken: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/IncidentInput
+    responses:
+      '200':
+        description: Incident mis à jour
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Incident
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+      '422':
+        $ref: ../openapi.yaml#/components/responses/ValidationError
+/platform/incidents/{id}/updates:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/Id
+  post:
+    tags:
+    - Plateforme
+    operationId: platformAddIncidentUpdate
+    summary: Publier une mise à jour ; option de communication aux entreprises concernées
+    x-roles:
+    - platform
+    security:
+    - platformSessionCookie: []
+      csrfToken: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - body
+            properties:
+              body:
+                type: string
+              notify_companies:
+                type: boolean
+                default: false
+    responses:
+      '201':
+        description: Mise à jour publiée
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+/platform/support/tickets:
+  get:
+    tags:
+    - Plateforme
+    operationId: platformListTickets
+    summary: Tickets de support de toutes les entreprises
+    x-roles:
+    - platform
+    security:
+    - platformSessionCookie: []
+      csrfToken: []
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/Limit
+    - $ref: ../openapi.yaml#/components/parameters/Cursor
+    - name: status
+      in: query
+      schema:
+        $ref: ../openapi.yaml#/components/schemas/TicketStatus
+    responses:
+      '200':
+        description: Page de tickets
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: ../openapi.yaml#/components/schemas/SupportTicket
+                next_cursor:
+                  type: string
+                  nullable: true
+/platform/admins:
+  get:
+    tags:
+    - Plateforme
+    operationId: platformListAdmins
+    summary: 'Administrateurs de plateforme (OUV-002 : nombre et rôles à décider)'
+    x-roles:
+    - platform
+    security:
+    - platformSessionCookie: []
+      csrfToken: []
+    responses:
+      '200':
+        description: Liste
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: ../openapi.yaml#/components/schemas/PlatformAdmin
+  post:
+    tags:
+    - Plateforme
+    operationId: platformCreateAdmin
+    summary: Créer un administrateur (permission platform_admins.manage)
+    x-roles:
+    - platform
+    security:
+    - platformSessionCookie: []
+      csrfToken: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - email
+            - platform_role_id
+            properties:
+              email:
+                type: string
+                format: email
+              platform_role_id:
+                type: string
+                format: uuid
+    responses:
+      '201':
+        description: Administrateur créé (invitation envoyée)
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/PlatformAdmin
+      '403':
+        $ref: ../openapi.yaml#/components/responses/Forbidden
+      '409':
+        $ref: ../openapi.yaml#/components/responses/Conflict
+/platform/roles:
+  get:
+    tags:
+    - Plateforme
+    operationId: platformListRoles
+    summary: Rôles de plateforme et leurs permissions
+    x-roles:
+    - platform
+    security:
+    - platformSessionCookie: []
+      csrfToken: []
+    responses:
+      '200':
+        description: Liste
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: ../openapi.yaml#/components/schemas/PlatformRole
+/platform/access-grants:
+  post:
+    tags:
+    - Plateforme
+    operationId: platformCreateAccessGrant
+    summary: Demander une intervention sur les données d'une entreprise (justifiée, limitée, approuvée par un autre administrateur
+      — SEC-014)
+    x-roles:
+    - platform
+    security:
+    - platformSessionCookie: []
+      csrfToken: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - company_id
+            - reason
+            - expires_at
+            properties:
+              company_id:
+                type: string
+                format: uuid
+              reason:
+                type: string
+                minLength: 10
+              expires_at:
+                type: string
+                format: date-time
+    responses:
+      '201':
+        description: Demande créée (en attente d'approbation)
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/AccessGrant
+      '403':
+        $ref: ../openapi.yaml#/components/responses/Forbidden
+      '422':
+        $ref: ../openapi.yaml#/components/responses/ValidationError
+/platform/access-grants/{id}/approve:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/Id
+  post:
+    tags:
+    - Plateforme
+    operationId: platformApproveAccessGrant
+    summary: Approuver (l'approbateur ne peut pas être le demandeur)
+    x-roles:
+    - platform
+    security:
+    - platformSessionCookie: []
+      csrfToken: []
+    responses:
+      '200':
+        description: Intervention approuvée
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/AccessGrant
+      '403':
+        $ref: ../openapi.yaml#/components/responses/Forbidden
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+/platform/access-grants/{id}/revoke:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/Id
+  post:
+    tags:
+    - Plateforme
+    operationId: platformRevokeAccessGrant
+    summary: Révoquer une intervention
+    x-roles:
+    - platform
+    security:
+    - platformSessionCookie: []
+      csrfToken: []
+    responses:
+      '200':
+        description: Intervention révoquée
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/AccessGrant
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound

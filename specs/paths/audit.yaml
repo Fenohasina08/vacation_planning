@@ -1,0 +1,46 @@
+/audit-logs:
+  get:
+    tags:
+    - Audit
+    operationId: listAuditLogs
+    summary: Journal d'audit de l'entreprise, lecture seule (FONC-132)
+    description: Inclut les interventions des administrateurs de plateforme sur l'entreprise (SEC-014).
+    x-roles:
+    - hr
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/Limit
+    - $ref: ../openapi.yaml#/components/parameters/Cursor
+    - name: action
+      in: query
+      schema:
+        type: string
+    - name: entity_type
+      in: query
+      schema:
+        type: string
+    - name: entity_id
+      in: query
+      schema:
+        type: string
+        format: uuid
+    - $ref: ../openapi.yaml#/components/parameters/From
+    - $ref: ../openapi.yaml#/components/parameters/To
+    responses:
+      '200':
+        description: Page d'entrées
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: ../openapi.yaml#/components/schemas/AuditLog
+                next_cursor:
+                  type: string
+                  nullable: true
+      '403':
+        $ref: ../openapi.yaml#/components/responses/Forbidden

@@ -1,0 +1,315 @@
+/workflows:
+  get:
+    tags:
+    - Circuits de validation
+    operationId: listWorkflows
+    summary: Circuits de validation
+    x-roles:
+    - hr
+    responses:
+      '200':
+        description: Liste
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: ../openapi.yaml#/components/schemas/Workflow
+  post:
+    tags:
+    - Circuits de validation
+    operationId: createWorkflow
+    summary: Créer un circuit (RH seul, responsable hiérarchique, plusieurs étapes — FONC-040)
+    x-roles:
+    - hr
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/WorkflowInput
+    responses:
+      '201':
+        description: Créé
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Workflow
+      '409':
+        $ref: ../openapi.yaml#/components/responses/Conflict
+      '422':
+        $ref: ../openapi.yaml#/components/responses/ValidationError
+/workflows/{id}:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/Id
+  put:
+    tags:
+    - Circuits de validation
+    operationId: replaceWorkflow
+    summary: Remplacer un circuit (n'affecte que les nouvelles demandes)
+    x-roles:
+    - hr
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: ../openapi.yaml#/components/schemas/WorkflowInput
+    responses:
+      '200':
+        description: Modifié
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Workflow
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+      '422':
+        $ref: ../openapi.yaml#/components/responses/ValidationError
+/approvals:
+  get:
+    tags:
+    - Validations
+    operationId: listApprovals
+    summary: Demandes en attente pour l'utilisateur (FONC-041)
+    x-roles:
+    - manager
+    - hr
+    - director
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/Limit
+    - $ref: ../openapi.yaml#/components/parameters/Cursor
+    - name: status
+      in: query
+      schema:
+        $ref: ../openapi.yaml#/components/schemas/ApprovalTaskStatus
+    responses:
+      '200':
+        description: Page de tâches de validation
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: ../openapi.yaml#/components/schemas/ApprovalTask
+                next_cursor:
+                  type: string
+                  nullable: true
+/approvals/{id}/approve:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/Id
+  post:
+    tags:
+    - Validations
+    operationId: approveTask
+    summary: Approuver. Un valideur ne peut pas approuver sa propre demande (RG-007)
+    x-roles:
+    - manager
+    - hr
+    - director
+    requestBody:
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              comment:
+                type: string
+    responses:
+      '200':
+        description: Décision enregistrée (immuable)
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ApprovalTask
+      '403':
+        $ref: ../openapi.yaml#/components/responses/Forbidden
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+      '409':
+        $ref: ../openapi.yaml#/components/responses/Conflict
+/approvals/{id}/reject:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/Id
+  post:
+    tags:
+    - Validations
+    operationId: rejectTask
+    summary: Refuser, avec motif lorsque l'entreprise l'exige (FONC-043)
+    x-roles:
+    - manager
+    - hr
+    - director
+    requestBody:
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              comment:
+                type: string
+    responses:
+      '200':
+        description: Décision enregistrée (immuable)
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/ApprovalTask
+      '403':
+        $ref: ../openapi.yaml#/components/responses/Forbidden
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+      '409':
+        $ref: ../openapi.yaml#/components/responses/Conflict
+      '422':
+        $ref: ../openapi.yaml#/components/responses/ValidationError
+/approvals/bulk:
+  post:
+    tags:
+    - Validations
+    operationId: bulkDecideTasks
+    summary: Action rapide sur plusieurs demandes (FONC-045) ; chaque élément est contrôlé individuellement
+    x-roles:
+    - manager
+    - hr
+    - director
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - action
+            - task_ids
+            properties:
+              action:
+                type: string
+                enum:
+                - approve
+                - reject
+              task_ids:
+                type: array
+                minItems: 1
+                maxItems: 100
+                items:
+                  type: string
+                  format: uuid
+              comment:
+                type: string
+    responses:
+      '200':
+        description: Résultat par élément
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - results
+              properties:
+                results:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                    - task_id
+                    - ok
+                    properties:
+                      task_id:
+                        type: string
+                        format: uuid
+                      ok:
+                        type: boolean
+                      error:
+                        type: string
+      '422':
+        $ref: ../openapi.yaml#/components/responses/ValidationError
+/approval-delegations:
+  get:
+    tags:
+    - Validations
+    operationId: listDelegations
+    summary: Délégations de validation (FONC-049)
+    x-roles:
+    - manager
+    - hr
+    - director
+    responses:
+      '200':
+        description: Liste
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: ../openapi.yaml#/components/schemas/Delegation
+  post:
+    tags:
+    - Validations
+    operationId: createDelegation
+    summary: Déléguer ses validations pendant une période
+    x-roles:
+    - manager
+    - hr
+    - director
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - delegate_id
+            - start_date
+            - end_date
+            properties:
+              delegate_id:
+                type: string
+                format: uuid
+              start_date:
+                type: string
+                format: date
+              end_date:
+                type: string
+                format: date
+    responses:
+      '201':
+        description: Délégation créée
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Delegation
+      '422':
+        $ref: ../openapi.yaml#/components/responses/ValidationError
+/approval-delegations/{id}:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/Id
+  delete:
+    tags:
+    - Validations
+    operationId: deleteDelegation
+    summary: Supprimer une délégation
+    x-roles:
+    - manager
+    - hr
+    - director
+    responses:
+      '204':
+        description: Supprimée
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound

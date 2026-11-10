@@ -1,0 +1,55 @@
+Membership:
+  type: object
+  required:
+  - company_id
+  - company_name
+  - employee_id
+  - role
+  properties:
+    company_id:
+      type: string
+      format: uuid
+    company_name:
+      type: string
+    employee_id:
+      type: string
+      format: uuid
+    role:
+      $ref: ../openapi.yaml#/components/schemas/EmployeeRole
+Me:
+  type: object
+  required:
+  - employee_id
+  - email
+  - first_name
+  - last_name
+  - role
+  - is_manager
+  - permissions
+  properties:
+    employee_id:
+      type: string
+      format: uuid
+    email:
+      type: string
+      format: email
+    first_name:
+      type: string
+    last_name:
+      type: string
+    role:
+      $ref: ../openapi.yaml#/components/schemas/EmployeeRole
+    is_manager:
+      type: boolean
+      description: Vrai si l'employé est le responsable d'au moins un employé
+    department_id:
+      type: string
+      format: uuid
+      nullable: true
+    permissions:
+      type: array
+      items:
+        type: string
+    locale:
+      type: string
+      example: fr

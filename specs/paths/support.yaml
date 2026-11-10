@@ -1,0 +1,133 @@
+/support/tickets:
+  get:
+    tags:
+    - Support
+    operationId: listTickets
+    summary: 'Tickets de support et retours de l''utilisateur (RH : de l''entreprise)'
+    x-roles:
+    - employee
+    - manager
+    - hr
+    - director
+    parameters:
+    - $ref: ../openapi.yaml#/components/parameters/Limit
+    - $ref: ../openapi.yaml#/components/parameters/Cursor
+    responses:
+      '200':
+        description: Page de tickets
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: ../openapi.yaml#/components/schemas/SupportTicket
+                next_cursor:
+                  type: string
+                  nullable: true
+  post:
+    tags:
+    - Support
+    operationId: createTicket
+    summary: Contacter le support ou envoyer un retour (FONC-120, FONC-121)
+    x-roles:
+    - employee
+    - manager
+    - hr
+    - director
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - kind
+            - subject
+            - body
+            properties:
+              kind:
+                $ref: ../openapi.yaml#/components/schemas/TicketKind
+              subject:
+                type: string
+                maxLength: 200
+              body:
+                type: string
+                maxLength: 10000
+    responses:
+      '201':
+        description: Ticket créé
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/SupportTicket
+      '422':
+        $ref: ../openapi.yaml#/components/responses/ValidationError
+      '429':
+        $ref: ../openapi.yaml#/components/responses/TooManyRequests
+/support/tickets/{id}/messages:
+  parameters:
+  - $ref: ../openapi.yaml#/components/parameters/Id
+  get:
+    tags:
+    - Support
+    operationId: listTicketMessages
+    summary: Échanges d'un ticket
+    x-roles:
+    - employee
+    - manager
+    - hr
+    - director
+    responses:
+      '200':
+        description: Messages
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: ../openapi.yaml#/components/schemas/TicketMessage
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+  post:
+    tags:
+    - Support
+    operationId: addTicketMessage
+    summary: Répondre dans un ticket
+    x-roles:
+    - employee
+    - manager
+    - hr
+    - director
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - body
+            properties:
+              body:
+                type: string
+                maxLength: 10000
+    responses:
+      '201':
+        description: Message ajouté
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/TicketMessage
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+      '422':
+        $ref: ../openapi.yaml#/components/responses/ValidationError

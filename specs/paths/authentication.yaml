@@ -1,0 +1,325 @@
+/auth/register-company:
+  post:
+    tags:
+    - Authentification
+    operationId: registerCompany
+    summary: Inscrire une entreprise (FONC-001)
+    description: Crée l'entreprise en attente de vérification, le premier compte RH et envoie le courriel de vérification.
+    security: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - company_name
+            - first_name
+            - last_name
+            - email
+            - password
+            properties:
+              company_name:
+                type: string
+                maxLength: 200
+              first_name:
+                type: string
+              last_name:
+                type: string
+              email:
+                type: string
+                format: email
+              password:
+                type: string
+                format: password
+                minLength: 12
+              country_code:
+                type: string
+                minLength: 2
+                maxLength: 2
+    responses:
+      '202':
+        description: Courriel de vérification envoyé (réponse identique que l'adresse existe déjà ou non)
+      '422':
+        $ref: ../openapi.yaml#/components/responses/ValidationError
+      '429':
+        $ref: ../openapi.yaml#/components/responses/TooManyRequests
+/auth/verify-email:
+  post:
+    tags:
+    - Authentification
+    operationId: verifyEmail
+    summary: Vérifier une adresse électronique (SEC-004)
+    security: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - token
+            properties:
+              token:
+                type: string
+    responses:
+      '204':
+        description: Adresse vérifiée ; espace de travail créé
+      '400':
+        $ref: ../openapi.yaml#/components/responses/BadRequest
+      '429':
+        $ref: ../openapi.yaml#/components/responses/TooManyRequests
+/auth/login:
+  post:
+    tags:
+    - Authentification
+    operationId: login
+    summary: Connexion par courriel et mot de passe (étape 1)
+    security: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - email
+            - password
+            properties:
+              email:
+                type: string
+                format: email
+              password:
+                type: string
+                format: password
+    responses:
+      '200':
+        description: Mot de passe correct ; un code de vérification est envoyé par courriel (SEC-002)
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - challenge_id
+              properties:
+                challenge_id:
+                  type: string
+                  format: uuid
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Unauthorized
+      '429':
+        $ref: ../openapi.yaml#/components/responses/TooManyRequests
+/auth/login/verify-otp:
+  post:
+    tags:
+    - Authentification
+    operationId: verifyLoginOtp
+    summary: Code de vérification (étape 2) et ouverture de session
+    security: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - challenge_id
+            - code
+            properties:
+              challenge_id:
+                type: string
+                format: uuid
+              code:
+                type: string
+                pattern: ^[0-9]{6}$
+    responses:
+      '200':
+        description: Session ouverte (cookie). Si le compte a plusieurs entreprises, `company_selection_required` vaut true.
+        headers:
+          Set-Cookie:
+            schema:
+              type: string
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - company_selection_required
+              properties:
+                company_selection_required:
+                  type: boolean
+                csrf_token:
+                  type: string
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Unauthorized
+      '429':
+        $ref: ../openapi.yaml#/components/responses/TooManyRequests
+/auth/logout:
+  post:
+    tags:
+    - Authentification
+    operationId: logout
+    summary: Fermer la session courante
+    responses:
+      '204':
+        description: Session révoquée
+/auth/logout-all:
+  post:
+    tags:
+    - Authentification
+    operationId: logoutAll
+    summary: Révoquer toutes les sessions du compte
+    responses:
+      '204':
+        description: Sessions révoquées
+/auth/password/forgot:
+  post:
+    tags:
+    - Authentification
+    operationId: forgotPassword
+    summary: Demander une réinitialisation (réponse identique si le compte n'existe pas)
+    security: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - email
+            properties:
+              email:
+                type: string
+                format: email
+    responses:
+      '202':
+        description: Si le compte existe, un courriel est envoyé
+      '429':
+        $ref: ../openapi.yaml#/components/responses/TooManyRequests
+/auth/password/reset:
+  post:
+    tags:
+    - Authentification
+    operationId: resetPassword
+    summary: Définir un nouveau mot de passe (lien à usage unique, SEC-005)
+    security: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - token
+            - new_password
+            properties:
+              token:
+                type: string
+              new_password:
+                type: string
+                format: password
+                minLength: 12
+    responses:
+      '204':
+        description: Mot de passe modifié ; sessions précédentes révoquées
+      '400':
+        $ref: ../openapi.yaml#/components/responses/BadRequest
+      '422':
+        $ref: ../openapi.yaml#/components/responses/ValidationError
+/auth/invitations/accept:
+  post:
+    tags:
+    - Authentification
+    operationId: acceptInvitation
+    summary: Activer un compte à partir d'une invitation (FONC-013)
+    security: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - token
+            - password
+            properties:
+              token:
+                type: string
+              password:
+                type: string
+                format: password
+                minLength: 12
+    responses:
+      '204':
+        description: Compte activé
+      '400':
+        $ref: ../openapi.yaml#/components/responses/BadRequest
+      '422':
+        $ref: ../openapi.yaml#/components/responses/ValidationError
+/auth/memberships:
+  get:
+    tags:
+    - Authentification
+    operationId: listMemberships
+    summary: Entreprises auxquelles le compte est rattaché
+    responses:
+      '200':
+        description: Liste des rattachements actifs
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: ../openapi.yaml#/components/schemas/Membership
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Unauthorized
+/auth/select-company:
+  post:
+    tags:
+    - Authentification
+    operationId: selectCompany
+    summary: Choisir l'entreprise active de la session
+    description: Le serveur vérifie que le compte possède un rattachement actif ; l'identifiant n'est jamais accepté sans
+      cette vérification.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - employee_id
+            properties:
+              employee_id:
+                type: string
+                format: uuid
+    responses:
+      '204':
+        description: Entreprise active mise à jour
+      '404':
+        $ref: ../openapi.yaml#/components/responses/NotFound
+/me:
+  get:
+    tags:
+    - Authentification
+    operationId: getMe
+    summary: Profil de l'utilisateur connecté, rôle et permissions effectives
+    x-roles:
+    - employee
+    - manager
+    - hr
+    - director
+    responses:
+      '200':
+        description: Profil
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Me
+      '401':
+        $ref: ../openapi.yaml#/components/responses/Unauthorized

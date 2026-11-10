@@ -1,0 +1,91 @@
+/plans:
+  get:
+    tags:
+    - Abonnement
+    operationId: listPlans
+    summary: Offres disponibles (prix et limites À préciser)
+    x-roles:
+    - hr
+    responses:
+      '200':
+        description: Offres
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: ../openapi.yaml#/components/schemas/Plan
+/subscription:
+  get:
+    tags:
+    - Abonnement
+    operationId: getSubscription
+    summary: Abonnement courant, échéance et usage par rapport aux limites
+    x-roles:
+    - hr
+    responses:
+      '200':
+        description: Abonnement
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/Subscription
+/subscription-requests:
+  get:
+    tags:
+    - Abonnement
+    operationId: listSubscriptionRequests
+    summary: Demandes de changement d'abonnement de l'entreprise
+    x-roles:
+    - hr
+    responses:
+      '200':
+        description: Liste
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - data
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: ../openapi.yaml#/components/schemas/SubscriptionRequest
+  post:
+    tags:
+    - Abonnement
+    operationId: createSubscriptionRequest
+    summary: Demander un changement d'abonnement ; validation par IT Solution (FONC-112)
+    x-roles:
+    - hr
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - plan_id
+            properties:
+              plan_id:
+                type: string
+                format: uuid
+              note:
+                type: string
+    responses:
+      '201':
+        description: Demande enregistrée
+        content:
+          application/json:
+            schema:
+              $ref: ../openapi.yaml#/components/schemas/SubscriptionRequest
+      '409':
+        $ref: ../openapi.yaml#/components/responses/Conflict
+      '422':
+        $ref: ../openapi.yaml#/components/responses/ValidationError

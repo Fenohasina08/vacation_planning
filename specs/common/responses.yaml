@@ -1,0 +1,54 @@
+responses:
+  BadRequest:
+    description: Requête invalide ou jeton invalide, expiré ou déjà utilisé
+    content:
+      application/problem+json:
+        schema:
+          $ref: ../openapi.yaml#/components/schemas/Problem
+  Unauthorized:
+    description: Non authentifié ou identifiants invalides (message générique)
+    content:
+      application/problem+json:
+        schema:
+          $ref: ../openapi.yaml#/components/schemas/Problem
+  Forbidden:
+    description: Permission insuffisante
+    content:
+      application/problem+json:
+        schema:
+          $ref: ../openapi.yaml#/components/schemas/Problem
+  NotFound:
+    description: Ressource introuvable (y compris si elle appartient à une autre entreprise)
+    content:
+      application/problem+json:
+        schema:
+          $ref: ../openapi.yaml#/components/schemas/Problem
+  Conflict:
+    description: Conflit d'état ou de données (doublon, transition interdite, chevauchement)
+    content:
+      application/problem+json:
+        schema:
+          $ref: ../openapi.yaml#/components/schemas/Problem
+  ValidationError:
+    description: Données invalides ou règle métier non respectée
+    content:
+      application/problem+json:
+        schema:
+          $ref: ../openapi.yaml#/components/schemas/Problem
+  PayloadTooLarge:
+    description: Fichier trop volumineux (limite À préciser)
+    content:
+      application/problem+json:
+        schema:
+          $ref: ../openapi.yaml#/components/schemas/Problem
+  TooManyRequests:
+    description: Trop de requêtes
+    headers:
+      Retry-After:
+        schema:
+          type: integer
+        description: Secondes avant nouvel essai
+    content:
+      application/problem+json:
+        schema:
+          $ref: ../openapi.yaml#/components/schemas/Problem

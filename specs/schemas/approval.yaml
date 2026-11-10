@@ -1,0 +1,143 @@
+ApprovalTaskStatus:
+  type: string
+  enum:
+  - pending
+  - approved
+  - rejected
+  - skipped
+  - cancelled
+ApproverKind:
+  type: string
+  enum:
+  - hr
+  - manager
+  - director
+  - specific_employee
+WorkflowStep:
+  type: object
+  required:
+  - step_order
+  - approver_kind
+  properties:
+    step_order:
+      type: integer
+      minimum: 1
+    approver_kind:
+      $ref: ../openapi.yaml#/components/schemas/ApproverKind
+    approver_employee_id:
+      type: string
+      format: uuid
+      nullable: true
+      description: Requis si approver_kind = specific_employee
+WorkflowInput:
+  type: object
+  required:
+  - name
+  - steps
+  properties:
+    name:
+      type: string
+    is_default:
+      type: boolean
+    is_active:
+      type: boolean
+    steps:
+      type: array
+      minItems: 1
+      items:
+        $ref: ../openapi.yaml#/components/schemas/WorkflowStep
+Workflow:
+  allOf:
+  - $ref: ../openapi.yaml#/components/schemas/WorkflowInput
+  - type: object
+    required:
+    - id
+    properties:
+      id:
+        type: string
+        format: uuid
+Decision:
+  type: object
+  required:
+  - step_order
+  - status
+  properties:
+    step_order:
+      type: integer
+    status:
+      $ref: ../openapi.yaml#/components/schemas/ApprovalTaskStatus
+    decided_by_employee_id:
+      type: string
+      format: uuid
+      nullable: true
+    decided_at:
+      type: string
+      format: date-time
+      nullable: true
+    comment:
+      type: string
+      nullable: true
+ApprovalTask:
+  type: object
+  required:
+  - id
+  - leave_request_id
+  - step_order
+  - status
+  properties:
+    id:
+      type: string
+      format: uuid
+    leave_request_id:
+      type: string
+      format: uuid
+    step_order:
+      type: integer
+    status:
+      $ref: ../openapi.yaml#/components/schemas/ApprovalTaskStatus
+    employee:
+      $ref: ../openapi.yaml#/components/schemas/EmployeeSummary
+    leave_type_name:
+      type: string
+      description: Libellé masqué si le type est confidentiel pour ce valideur
+    start_date:
+      type: string
+      format: date
+    end_date:
+      type: string
+      format: date
+    days_count:
+      type: number
+    is_urgent:
+      type: boolean
+    comment:
+      type: string
+      nullable: true
+    decided_at:
+      type: string
+      format: date-time
+      nullable: true
+Delegation:
+  type: object
+  required:
+  - id
+  - delegator_id
+  - delegate_id
+  - start_date
+  - end_date
+  properties:
+    id:
+      type: string
+      format: uuid
+    delegator_id:
+      type: string
+      format: uuid
+    delegate_id:
+      type: string
+      format: uuid
+    start_date:
+      type: string
+      format: date
+    end_date:
+      type: string
+      format: date

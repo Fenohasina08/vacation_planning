@@ -1,0 +1,44 @@
+parameters:
+  Id:
+    name: id
+    in: path
+    required: true
+    schema:
+      type: string
+      format: uuid
+  Limit:
+    name: limit
+    in: query
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 100
+      default: 25
+  Cursor:
+    name: cursor
+    in: query
+    description: Curseur opaque renvoyé par `next_cursor`
+    schema:
+      type: string
+  From:
+    name: from
+    in: query
+    required: false
+    schema:
+      type: string
+      format: date
+  To:
+    name: to
+    in: query
+    required: false
+    schema:
+      type: string
+      format: date
+  IdempotencyKey:
+    name: Idempotency-Key
+    in: header
+    required: false
+    description: Clé unique générée par le client pour rendre la création rejouable sans doublon.
+    schema:
+      type: string
+      maxLength: 100

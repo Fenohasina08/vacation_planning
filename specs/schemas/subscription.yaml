@@ -1,0 +1,100 @@
+RequestStatus:
+  type: string
+  enum:
+  - pending
+  - approved
+  - rejected
+  - cancelled
+SubscriptionStatus:
+  type: string
+  enum:
+  - active
+  - grace_period
+  - restricted
+  - cancelled
+PlanInput:
+  type: object
+  properties:
+    code:
+      type: string
+    name:
+      type: string
+    max_employees:
+      type: integer
+      minimum: 1
+      nullable: true
+    features:
+      type: object
+      additionalProperties: true
+    price_amount:
+      type: number
+      minimum: 0
+      nullable: true
+    price_currency:
+      type: string
+      minLength: 3
+      maxLength: 3
+      nullable: true
+    is_active:
+      type: boolean
+Plan:
+  allOf:
+  - $ref: ../openapi.yaml#/components/schemas/PlanInput
+  - type: object
+    required:
+    - id
+    - code
+    - name
+    properties:
+      id:
+        type: string
+        format: uuid
+Subscription:
+  type: object
+  required:
+  - plan
+  - status
+  properties:
+    plan:
+      $ref: ../openapi.yaml#/components/schemas/Plan
+    status:
+      $ref: ../openapi.yaml#/components/schemas/SubscriptionStatus
+    current_period_end:
+      type: string
+      format: date-time
+      nullable: true
+    grace_ends_at:
+      type: string
+      format: date-time
+      nullable: true
+    employee_count:
+      type: integer
+SubscriptionRequest:
+  type: object
+  required:
+  - id
+  - requested_plan_id
+  - status
+  properties:
+    id:
+      type: string
+      format: uuid
+    company_id:
+      type: string
+      format: uuid
+      description: Présent uniquement côté plateforme
+    requested_plan_id:
+      type: string
+      format: uuid
+    status:
+      $ref: ../openapi.yaml#/components/schemas/RequestStatus
+    requested_at:
+      type: string
+      format: date-time
+    decided_at:
+      type: string
+      format: date-time
+      nullable: true
+    decision_note:
+      type: string
+      nullable: true

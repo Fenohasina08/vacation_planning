@@ -1,0 +1,142 @@
+AdjustmentStatus:
+  type: string
+  enum:
+  - pending_approval
+  - applied
+  - rejected
+LedgerEntryType:
+  type: string
+  enum:
+  - accrual
+  - carry_over
+  - expiration
+  - adjustment
+  - leave_debit
+  - leave_credit
+EmployeeSummary:
+  type: object
+  required:
+  - id
+  - first_name
+  - last_name
+  properties:
+    id:
+      type: string
+      format: uuid
+    first_name:
+      type: string
+    last_name:
+      type: string
+    department_id:
+      type: string
+      format: uuid
+      nullable: true
+Balance:
+  type: object
+  required:
+  - leave_type_id
+  - available_days
+  properties:
+    employee_id:
+      type: string
+      format: uuid
+    leave_type_id:
+      type: string
+      format: uuid
+    accrued_days:
+      type: number
+    expired_days:
+      type: number
+    adjustment_days:
+      type: number
+    used_days:
+      type: number
+    reserved_days:
+      type: number
+      description: Jours de demandes approuvées à venir
+    pending_days:
+      type: number
+    available_days:
+      type: number
+    available_after_pending_days:
+      type: number
+LedgerEntry:
+  type: object
+  required:
+  - id
+  - entry_type
+  - days
+  - effective_date
+  properties:
+    id:
+      type: string
+      format: uuid
+    leave_type_id:
+      type: string
+      format: uuid
+    entry_type:
+      $ref: ../openapi.yaml#/components/schemas/LedgerEntryType
+    days:
+      type: number
+      description: 'Signé : + crédit, - débit'
+    effective_date:
+      type: string
+      format: date
+    leave_request_id:
+      type: string
+      format: uuid
+      nullable: true
+    adjustment_id:
+      type: string
+      format: uuid
+      nullable: true
+    note:
+      type: string
+      nullable: true
+    created_at:
+      type: string
+      format: date-time
+BalanceAdjustment:
+  type: object
+  required:
+  - id
+  - employee_id
+  - leave_type_id
+  - old_value
+  - new_value
+  - reason
+  - status
+  properties:
+    id:
+      type: string
+      format: uuid
+    employee_id:
+      type: string
+      format: uuid
+    leave_type_id:
+      type: string
+      format: uuid
+    old_value:
+      type: number
+    new_value:
+      type: number
+    delta:
+      type: number
+    reason:
+      type: string
+    status:
+      $ref: ../openapi.yaml#/components/schemas/AdjustmentStatus
+    requested_by_employee_id:
+      type: string
+      format: uuid
+    approved_by_employee_id:
+      type: string
+      format: uuid
+      nullable: true
+    requested_at:
+      type: string
+      format: date-time
+    decided_at:
+      type: string
+      format: date-time
+      nullable: true

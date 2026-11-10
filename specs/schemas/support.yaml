@@ -1,0 +1,66 @@
+TicketKind:
+  type: string
+  enum:
+  - support
+  - feedback
+TicketStatus:
+  type: string
+  enum:
+  - open
+  - in_progress
+  - resolved
+  - closed
+SupportTicket:
+  type: object
+  required:
+  - id
+  - kind
+  - subject
+  - status
+  - severity
+  properties:
+    id:
+      type: string
+      format: uuid
+    company_id:
+      type: string
+      format: uuid
+      description: Présent uniquement côté plateforme
+    kind:
+      $ref: ../openapi.yaml#/components/schemas/TicketKind
+    subject:
+      type: string
+    body:
+      type: string
+    severity:
+      $ref: ../openapi.yaml#/components/schemas/SeverityLevel
+    status:
+      $ref: ../openapi.yaml#/components/schemas/TicketStatus
+    created_at:
+      type: string
+      format: date-time
+    resolved_at:
+      type: string
+      format: date-time
+      nullable: true
+TicketMessage:
+  type: object
+  required:
+  - id
+  - author_type
+  - body
+  - created_at
+  properties:
+    id:
+      type: string
+      format: uuid
+    author_type:
+      type: string
+      enum:
+      - employee
+      - platform_admin
+    body:
+      type: string
+    created_at:
+      type: string
+      format: date-time

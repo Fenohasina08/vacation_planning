@@ -1,0 +1,199 @@
+EmployeeRole:
+  type: string
+  enum:
+  - employee
+  - hr
+  - director
+  description: Le responsable hiérarchique est déduit de manager_id, ce n'est pas un rôle
+EmployeeStatus:
+  type: string
+  enum:
+  - invited
+  - active
+  - deactivated
+  - anonymized
+DepartmentInput:
+  type: object
+  required:
+  - name
+  properties:
+    name:
+      type: string
+    parent_id:
+      type: string
+      format: uuid
+      nullable: true
+Department:
+  allOf:
+  - $ref: ../openapi.yaml#/components/schemas/DepartmentInput
+  - type: object
+    required:
+    - id
+    properties:
+      id:
+        type: string
+        format: uuid
+      employee_count:
+        type: integer
+EmployeeInput:
+  type: object
+  required:
+  - email
+  - first_name
+  - last_name
+  properties:
+    email:
+      type: string
+      format: email
+    first_name:
+      type: string
+    last_name:
+      type: string
+    employee_number:
+      type: string
+      nullable: true
+    job_title:
+      type: string
+      nullable: true
+    department_id:
+      type: string
+      format: uuid
+      nullable: true
+    manager_id:
+      type: string
+      format: uuid
+      nullable: true
+    role:
+      $ref: ../openapi.yaml#/components/schemas/EmployeeRole
+    hire_date:
+      type: string
+      format: date
+      nullable: true
+    send_invitation:
+      type: boolean
+      default: true
+EmployeeUpdate:
+  type: object
+  description: Les champs sensibles (rôle, rattachement, dates) exigent le rôle RH et sont journalisés avec l'ancienne valeur.
+  properties:
+    first_name:
+      type: string
+    last_name:
+      type: string
+    employee_number:
+      type: string
+      nullable: true
+    job_title:
+      type: string
+      nullable: true
+    department_id:
+      type: string
+      format: uuid
+      nullable: true
+    manager_id:
+      type: string
+      format: uuid
+      nullable: true
+    role:
+      $ref: ../openapi.yaml#/components/schemas/EmployeeRole
+    hire_date:
+      type: string
+      format: date
+      nullable: true
+    end_date:
+      type: string
+      format: date
+      nullable: true
+Employee:
+  type: object
+  required:
+  - id
+  - email
+  - first_name
+  - last_name
+  - role
+  - status
+  properties:
+    id:
+      type: string
+      format: uuid
+    email:
+      type: string
+      format: email
+    first_name:
+      type: string
+    last_name:
+      type: string
+    employee_number:
+      type: string
+      nullable: true
+    job_title:
+      type: string
+      nullable: true
+    department_id:
+      type: string
+      format: uuid
+      nullable: true
+    manager_id:
+      type: string
+      format: uuid
+      nullable: true
+    role:
+      $ref: ../openapi.yaml#/components/schemas/EmployeeRole
+    status:
+      $ref: ../openapi.yaml#/components/schemas/EmployeeStatus
+    hire_date:
+      type: string
+      format: date
+      nullable: true
+    end_date:
+      type: string
+      format: date
+      nullable: true
+    deactivated_at:
+      type: string
+      format: date-time
+      nullable: true
+ImportJob:
+  type: object
+  required:
+  - id
+  - status
+  properties:
+    id:
+      type: string
+      format: uuid
+    status:
+      $ref: ../openapi.yaml#/components/schemas/JobStatus
+    dry_run:
+      type: boolean
+    total_rows:
+      type: integer
+      nullable: true
+    imported_rows:
+      type: integer
+      nullable: true
+    failed_rows:
+      type: integer
+      nullable: true
+    errors:
+      type: array
+      items:
+        type: object
+        required:
+        - row
+        - message
+        properties:
+          row:
+            type: integer
+          field:
+            type: string
+          message:
+            type: string
+    created_at:
+      type: string
+      format: date-time
+    finished_at:
+      type: string
+      format: date-time
+      nullable: true

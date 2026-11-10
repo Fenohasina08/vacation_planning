@@ -1,0 +1,48 @@
+AuditLog:
+  type: object
+  required:
+  - id
+  - actor_type
+  - action
+  - entity_type
+  - created_at
+  properties:
+    id:
+      type: integer
+      format: int64
+    actor_type:
+      type: string
+      enum:
+      - employee
+      - platform_admin
+      - system
+    actor_employee_id:
+      type: string
+      format: uuid
+      nullable: true
+    action:
+      type: string
+      example: balance.adjusted
+    entity_type:
+      type: string
+    entity_id:
+      type: string
+      format: uuid
+      nullable: true
+    before_data:
+      type: object
+      additionalProperties: true
+      nullable: true
+    after_data:
+      type: object
+      additionalProperties: true
+      nullable: true
+    ip:
+      type: string
+      nullable: true
+    request_id:
+      type: string
+      nullable: true
+    created_at:
+      type: string
+      format: date-time
