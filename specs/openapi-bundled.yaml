@@ -1,0 +1,4985 @@
+openapi: 3.0.3
+info:
+  title: API du SaaS de gestion des congés et absences (nom du projet à choisir)
+  version: 0.1.0
+  license:
+    name: MIT (ou autre)
+    url: https://opensource.org/licenses/MIT
+  description: |
+    Spécification de l'API REST du Produit IT Solution. **Proposition à valider** : elle découle du cahier
+    des charges v0.1 et du schéma SQL 01_schema.sql.
+
+    **Règles transverses**
+    - **Isolation (ISO-002, ISO-003).** L'entreprise active est déduite de la session côté serveur. Aucun
+      endpoint « entreprise » n'accepte un `company_id` dans le chemin, la requête ou le corps. Un identifiant
+      d'une autre entreprise renvoie `404`, jamais `403`, pour ne pas révéler son existence.
+    - **Permissions.** Chaque opération indique les rôles autorisés dans `x-roles` (`employee`, `manager`
+      (dérivé de la hiérarchie), `hr`, `director`, `platform`). Les contrôles sont faits côté serveur ; `x-roles`
+      documente l'intention, il ne remplace pas le contrôle.
+    - **Sessions.** Cookie `HttpOnly`, `Secure`, `SameSite`. Les requêtes qui modifient des données exigent
+      l'en-tête `X-CSRF-Token`.
+    - **Confidentialité.** Les champs `reason` (motifs) et les justificatifs ne sont renvoyés qu'au demandeur et
+      aux rôles autorisés. Calendriers, notifications et exports génériques ne les contiennent jamais.
+    - **Erreurs.** Format `application/problem+json` (RFC 7807). `404` pour toute ressource hors entreprise.
+    - **Pagination.** Par curseur : `limit` et `cursor`, réponse `{ data, next_cursor }`.
+    - **Statuts d'exigence.** Les valeurs marquées « À préciser » (demi-journées, solde négatif, demandes
+      urgentes, durée des invitations, etc.) sont paramétrables ; les contrats ci-dessous ne les fixent pas.
+  contact:
+    name: IT Solution
+servers:
+  - url: https://api.example.invalid/v1
+    description: Production (URL à définir)
+  - url: https://api-test.example.invalid/v1
+    description: Test (URL à définir)
+security:
+  - sessionCookie: []
+    csrfToken: []
+tags:
+  - name: Santé
+    description: Vérification de la disponibilité du service.
+  - name: Authentification
+    description: Inscription, connexion et gestion des sessions.
+  - name: Entreprise
+    description: Gestion des informations et paramètres de l’entreprise.
+  - name: Organisation
+    description: Gestion des départements et de la structure organisationnelle.
+  - name: Employés
+    description: Gestion des employés.
+  - name: Types de congés
+    description: Gestion des types de congés.
+  - name: Circuits de validation
+    description: Configuration des circuits de validation.
+  - name: Demandes de congé
+    description: Création et suivi des demandes de congé.
+  - name: Validations
+    description: Traitement des demandes de validation.
+  - name: Soldes
+    description: Consultation et correction des soldes de congés.
+  - name: Calendrier et disponibilité
+    description: Calendrier des absences et disponibilité des équipes.
+  - name: Tableau de bord
+    description: Indicateurs et statistiques.
+  - name: Exports
+    description: Génération et téléchargement des exports.
+  - name: Notifications
+    description: Gestion des notifications et préférences.
+  - name: Abonnement
+    description: Gestion des offres et abonnements.
+  - name: Support
+    description: Gestion des demandes de support.
+  - name: Audit
+    description: Consultation des journaux d’audit.
+  - name: Plateforme
+    description: Administration globale de la plateforme.
+paths:
+  /health:
+    get:
+      tags:
+        - Santé
+      operationId: getHealth
+      summary: État du service (sans donnée métier)
+      security: []
+      responses:
+        '200':
+          description: Service disponible
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                properties:
+                  status:
+                    type: string
+                    enum:
+                      - ok
+                  version:
+                    type: string
+  /auth/register-company:
+    post:
+      tags:
+        - Authentification
+      operationId: registerCompany
+      summary: Inscrire une entreprise (FONC-001)
+      description: Crée l'entreprise en attente de vérification, le premier compte RH et envoie le courriel de vérification.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - company_name
+                - first_name
+                - last_name
+                - email
+                - password
+              properties:
+                company_name:
+                  type: string
+                  maxLength: 200
+                first_name:
+                  type: string
+                last_name:
+                  type: string
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+                  minLength: 12
+                country_code:
+                  type: string
+                  minLength: 2
+                  maxLength: 2
+      responses:
+        '202':
+          description: Courriel de vérification envoyé (réponse identique que l'adresse existe déjà ou non)
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /auth/verify-email:
+    post:
+      tags:
+        - Authentification
+      operationId: verifyEmail
+      summary: Vérifier une adresse électronique (SEC-004)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+              properties:
+                token:
+                  type: string
+      responses:
+        '204':
+          description: Adresse vérifiée ; espace de travail créé
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /auth/login:
+    post:
+      tags:
+        - Authentification
+      operationId: login
+      summary: Connexion par courriel et mot de passe (étape 1)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+      responses:
+        '200':
+          description: Mot de passe correct ; un code de vérification est envoyé par courriel (SEC-002)
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - challenge_id
+                properties:
+                  challenge_id:
+                    type: string
+                    format: uuid
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /auth/login/verify-otp:
+    post:
+      tags:
+        - Authentification
+      operationId: verifyLoginOtp
+      summary: Code de vérification (étape 2) et ouverture de session
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - challenge_id
+                - code
+              properties:
+                challenge_id:
+                  type: string
+                  format: uuid
+                code:
+                  type: string
+                  pattern: ^[0-9]{6}$
+      responses:
+        '200':
+          description: Session ouverte (cookie). Si le compte a plusieurs entreprises, `company_selection_required` vaut true.
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - company_selection_required
+                properties:
+                  company_selection_required:
+                    type: boolean
+                  csrf_token:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /auth/logout:
+    post:
+      tags:
+        - Authentification
+      operationId: logout
+      summary: Fermer la session courante
+      responses:
+        '204':
+          description: Session révoquée
+  /auth/logout-all:
+    post:
+      tags:
+        - Authentification
+      operationId: logoutAll
+      summary: Révoquer toutes les sessions du compte
+      responses:
+        '204':
+          description: Sessions révoquées
+  /auth/password/forgot:
+    post:
+      tags:
+        - Authentification
+      operationId: forgotPassword
+      summary: Demander une réinitialisation (réponse identique si le compte n'existe pas)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '202':
+          description: Si le compte existe, un courriel est envoyé
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /auth/password/reset:
+    post:
+      tags:
+        - Authentification
+      operationId: resetPassword
+      summary: Définir un nouveau mot de passe (lien à usage unique, SEC-005)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+                - new_password
+              properties:
+                token:
+                  type: string
+                new_password:
+                  type: string
+                  format: password
+                  minLength: 12
+      responses:
+        '204':
+          description: Mot de passe modifié ; sessions précédentes révoquées
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /auth/invitations/accept:
+    post:
+      tags:
+        - Authentification
+      operationId: acceptInvitation
+      summary: Activer un compte à partir d'une invitation (FONC-013)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+                - password
+              properties:
+                token:
+                  type: string
+                password:
+                  type: string
+                  format: password
+                  minLength: 12
+      responses:
+        '204':
+          description: Compte activé
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /auth/memberships:
+    get:
+      tags:
+        - Authentification
+      operationId: listMemberships
+      summary: Entreprises auxquelles le compte est rattaché
+      responses:
+        '200':
+          description: Liste des rattachements actifs
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Membership'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /auth/select-company:
+    post:
+      tags:
+        - Authentification
+      operationId: selectCompany
+      summary: Choisir l'entreprise active de la session
+      description: Le serveur vérifie que le compte possède un rattachement actif ; l'identifiant n'est jamais accepté sans cette vérification.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - employee_id
+              properties:
+                employee_id:
+                  type: string
+                  format: uuid
+      responses:
+        '204':
+          description: Entreprise active mise à jour
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /me:
+    get:
+      tags:
+        - Authentification
+      operationId: getMe
+      summary: Profil de l'utilisateur connecté, rôle et permissions effectives
+      x-roles:
+        - employee
+        - manager
+        - hr
+        - director
+      responses:
+        '200':
+          description: Profil
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Me'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /company:
+    get:
+      tags:
+        - Entreprise
+      operationId: getCompany
+      summary: Entreprise active
+      x-roles:
+        - employee
+        - manager
+        - hr
+        - director
+      responses:
+        '200':
+          description: Entreprise
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Company'
+    patch:
+      tags:
+        - Entreprise
+      operationId: updateCompany
+      summary: Modifier le nom, le pays ou le fuseau horaire
+      x-roles:
+        - hr
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                country_code:
+                  type: string
+                  minLength: 2
+                  maxLength: 2
+                timezone:
+                  type: string
+                  example: Indian/Antananarivo
+      responses:
+        '200':
+          description: Entreprise modifiée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Company'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /company/settings:
+    get:
+      tags:
+        - Entreprise
+      operationId: getCompanySettings
+      summary: Paramètres de l'entreprise
+      x-roles:
+        - hr
+        - director
+      responses:
+        '200':
+          description: Paramètres
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanySettings'
+    patch:
+      tags:
+        - Entreprise
+      operationId: updateCompanySettings
+      summary: Modifier les paramètres (jours ouvrés, règles, validations) — journalisé
+      x-roles:
+        - hr
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompanySettings'
+      responses:
+        '200':
+          description: Paramètres modifiés
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompanySettings'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /company/holidays:
+    get:
+      tags:
+        - Entreprise
+      operationId: listHolidays
+      summary: Jours fériés
+      x-roles:
+        - employee
+        - manager
+        - hr
+        - director
+      parameters:
+        - name: year
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Jours fériés
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Holiday'
+    post:
+      tags:
+        - Entreprise
+      operationId: createHoliday
+      summary: Ajouter un jour férié
+      x-roles:
+        - hr
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HolidayInput'
+      responses:
+        '201':
+          description: Jour férié créé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Holiday'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /company/holidays/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    delete:
+      tags:
+        - Entreprise
+      operationId: deleteHoliday
+      summary: Supprimer un jour férié
+      x-roles:
+        - hr
+      responses:
+        '204':
+          description: Supprimé
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /departments:
+    get:
+      tags:
+        - Organisation
+      operationId: listDepartments
+      summary: Départements et services
+      x-roles:
+        - employee
+        - manager
+        - hr
+        - director
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Department'
+    post:
+      tags:
+        - Organisation
+      operationId: createDepartment
+      summary: Créer un département ou un service
+      x-roles:
+        - hr
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DepartmentInput'
+      responses:
+        '201':
+          description: Créé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Department'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /departments/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    patch:
+      tags:
+        - Organisation
+      operationId: updateDepartment
+      summary: Modifier un département
+      x-roles:
+        - hr
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DepartmentInput'
+      responses:
+        '200':
+          description: Modifié
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Department'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      tags:
+        - Organisation
+      operationId: deleteDepartment
+      summary: Supprimer un département vide
+      x-roles:
+        - hr
+      responses:
+        '204':
+          description: Supprimé
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /employees:
+    get:
+      tags:
+        - Employés
+      operationId: listEmployees
+      summary: Lister les employés visibles par l'utilisateur
+      x-roles:
+        - manager
+        - hr
+        - director
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: department_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/EmployeeStatus'
+        - name: q
+          in: query
+          description: Recherche par nom ou courriel
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Page d'employés
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Employee'
+                  next_cursor:
+                    type: string
+                    nullable: true
+    post:
+      tags:
+        - Employés
+      operationId: createEmployee
+      summary: Créer un employé et envoyer l'invitation (FONC-010)
+      x-roles:
+        - hr
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployeeInput'
+      responses:
+        '201':
+          description: Employé créé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Employee'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /employees/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags:
+        - Employés
+      operationId: getEmployee
+      summary: Détail d'un employé
+      x-roles:
+        - employee
+        - manager
+        - hr
+        - director
+      responses:
+        '200':
+          description: Employé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Employee'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags:
+        - Employés
+      operationId: updateEmployee
+      summary: Modifier un employé ; champs sensibles contrôlés et journalisés (FONC-015)
+      x-roles:
+        - hr
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmployeeUpdate'
+      responses:
+        '200':
+          description: Employé modifié
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Employee'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /employees/{id}/deactivate:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags:
+        - Employés
+      operationId: deactivateEmployee
+      summary: Désactiver un employé sortant ; l'historique est conservé (FONC-016)
+      x-roles:
+        - hr
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                end_date:
+                  type: string
+                  format: date
+                pending_requests_action:
+                  type: string
+                  enum:
+                    - cancel
+                    - reassign
+                  description: Traitement des demandes en attente (RG-011)
+      responses:
+        '200':
+          description: Employé désactivé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Employee'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /employees/{id}/reactivate:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags:
+        - Employés
+      operationId: reactivateEmployee
+      summary: Réactiver un compte désactivé
+      x-roles:
+        - hr
+      responses:
+        '200':
+          description: Employé réactivé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Employee'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /employees/{id}/invitations:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags:
+        - Employés
+      operationId: resendInvitation
+      summary: Renvoyer l'invitation (les précédentes sont révoquées)
+      x-roles:
+        - hr
+      responses:
+        '202':
+          description: Invitation envoyée
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /employees/imports:
+    post:
+      tags:
+        - Employés
+      operationId: createEmployeeImport
+      summary: Importer des employés depuis un fichier CSV ou Excel (FONC-011)
+      description: Traitement asynchrone. Un aperçu avec rapport d'erreurs est produit ; aucune ligne invalide n'est importée silencieusement (FONC-012).
+      x-roles:
+        - hr
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                dry_run:
+                  type: boolean
+                  default: true
+                  description: Si vrai, valide sans importer
+      responses:
+        '202':
+          description: Import accepté
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportJob'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /employees/imports/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags:
+        - Employés
+      operationId: getEmployeeImport
+      summary: État et rapport d'erreurs d'un import
+      x-roles:
+        - hr
+      responses:
+        '200':
+          description: Import
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportJob'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /employees/imports/{id}/commit:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags:
+        - Employés
+      operationId: commitEmployeeImport
+      summary: Confirmer un import validé à blanc
+      x-roles:
+        - hr
+      responses:
+        '202':
+          description: Import lancé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportJob'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /leave-types:
+    get:
+      tags:
+        - Types de congés
+      operationId: listLeaveTypes
+      summary: Types de congés de l'entreprise
+      x-roles:
+        - employee
+        - manager
+        - hr
+        - director
+      parameters:
+        - name: active_only
+          in: query
+          schema:
+            type: boolean
+            default: true
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LeaveType'
+    post:
+      tags:
+        - Types de congés
+      operationId: createLeaveType
+      summary: Créer un type de congé (FONC-020)
+      x-roles:
+        - hr
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveTypeInput'
+      responses:
+        '201':
+          description: Créé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveType'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /leave-types/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    patch:
+      tags:
+        - Types de congés
+      operationId: updateLeaveType
+      summary: Modifier ou désactiver un type de congé
+      x-roles:
+        - hr
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveTypeInput'
+      responses:
+        '200':
+          description: Modifié
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveType'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /leave-types/{id}/policies:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags:
+        - Types de congés
+      operationId: listLeavePolicies
+      summary: Règles d'acquisition, de report et d'expiration (À préciser, RG-012)
+      x-roles:
+        - hr
+      responses:
+        '200':
+          description: Règles
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LeavePolicy'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags:
+        - Types de congés
+      operationId: createLeavePolicy
+      summary: Ajouter une règle pour ce type
+      x-roles:
+        - hr
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeavePolicyInput'
+      responses:
+        '201':
+          description: Créée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeavePolicy'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /leave-requests:
+    get:
+      tags:
+        - Demandes de congé
+      operationId: listLeaveRequests
+      summary: Lister les demandes visibles (les siennes pour un employé)
+      x-roles:
+        - employee
+        - manager
+        - hr
+        - director
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: employee_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/LeaveRequestStatus'
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Page de demandes
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LeaveRequest'
+                  next_cursor:
+                    type: string
+                    nullable: true
+    post:
+      tags:
+        - Demandes de congé
+      operationId: createLeaveRequest
+      summary: Créer une demande (brouillon ou soumission directe)
+      description: 'Contrôles serveur : dates, solde, chevauchements, préavis, justificatif, limites d''absences. `Idempotency-Key` évite les doublons en cas de double clic.'
+      x-roles:
+        - employee
+        - manager
+        - hr
+        - director
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveRequestInput'
+      responses:
+        '201':
+          description: Demande créée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /leave-requests/preview:
+    post:
+      tags:
+        - Demandes de congé
+      operationId: previewLeaveRequest
+      summary: Simuler une demande (nombre de jours, solde, conflits, alertes) sans l'enregistrer
+      x-roles:
+        - employee
+        - manager
+        - hr
+        - director
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveRequestInput'
+      responses:
+        '200':
+          description: Résultat de la simulation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequestPreview'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /leave-requests/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags:
+        - Demandes de congé
+      operationId: getLeaveRequest
+      summary: Détail d'une demande avec historique des décisions
+      x-roles:
+        - employee
+        - manager
+        - hr
+        - director
+      responses:
+        '200':
+          description: Demande
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags:
+        - Demandes de congé
+      operationId: updateLeaveRequest
+      summary: Modifier un brouillon
+      x-roles:
+        - employee
+        - manager
+        - hr
+        - director
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveRequestInput'
+      responses:
+        '200':
+          description: Demande modifiée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /leave-requests/{id}/submit:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags:
+        - Demandes de congé
+      operationId: submitLeaveRequest
+      summary: Soumettre un brouillon au circuit de validation
+      x-roles:
+        - employee
+        - manager
+        - hr
+        - director
+      responses:
+        '200':
+          description: Demande soumise
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /leave-requests/{id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags:
+        - Demandes de congé
+      operationId: cancelLeaveRequest
+      summary: Annuler une demande selon les règles de l'entreprise (FONC-029)
+      x-roles:
+        - employee
+        - manager
+        - hr
+        - director
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: Demande annulée ; solde recrédité si elle était approuvée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /leave-requests/{id}/modification-requests:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags:
+        - Demandes de congé
+      operationId: createModificationRequest
+      summary: Demander la modification d'une demande approuvée (nouvelle demande liée, soumise au circuit)
+      x-roles:
+        - employee
+        - manager
+        - hr
+        - director
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaveRequestInput'
+      responses:
+        '201':
+          description: Demande de modification créée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaveRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /leave-requests/{id}/attachments:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags:
+        - Demandes de congé
+      operationId: listAttachments
+      summary: Justificatifs d'une demande (demandeur et rôles autorisés)
+      x-roles:
+        - employee
+        - hr
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Attachment'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags:
+        - Demandes de congé
+      operationId: uploadAttachment
+      summary: Ajouter un justificatif (type réel contrôlé, analyse antivirus — SEC-020)
+      x-roles:
+        - employee
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: Justificatif reçu (analyse en cours)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Attachment'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /leave-requests/{id}/attachments/{attachmentId}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+      - name: attachmentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags:
+        - Demandes de congé
+      operationId: downloadAttachment
+      summary: Télécharger un justificatif (redirection vers une URL signée de courte durée)
+      x-roles:
+        - employee
+        - hr
+      responses:
+        '302':
+          description: Redirection vers l'URL signée
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags:
+        - Demandes de congé
+      operationId: deleteAttachment
+      summary: Supprimer un justificatif tant que la demande n'est pas décidée
+      x-roles:
+        - employee
+      responses:
+        '204':
+          description: Supprimé
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /workflows:
+    get:
+      tags:
+        - Circuits de validation
+      operationId: listWorkflows
+      summary: Circuits de validation
+      x-roles:
+        - hr
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Workflow'
+    post:
+      tags:
+        - Circuits de validation
+      operationId: createWorkflow
+      summary: Créer un circuit (RH seul, responsable hiérarchique, plusieurs étapes — FONC-040)
+      x-roles:
+        - hr
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowInput'
+      responses:
+        '201':
+          description: Créé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workflow'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /workflows/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags:
+        - Circuits de validation
+      operationId: replaceWorkflow
+      summary: Remplacer un circuit (n'affecte que les nouvelles demandes)
+      x-roles:
+        - hr
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowInput'
+      responses:
+        '200':
+          description: Modifié
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Workflow'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /approvals:
+    get:
+      tags:
+        - Validations
+      operationId: listApprovals
+      summary: Demandes en attente pour l'utilisateur (FONC-041)
+      x-roles:
+        - manager
+        - hr
+        - director
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/ApprovalTaskStatus'
+      responses:
+        '200':
+          description: Page de tâches de validation
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ApprovalTask'
+                  next_cursor:
+                    type: string
+                    nullable: true
+  /approvals/{id}/approve:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags:
+        - Validations
+      operationId: approveTask
+      summary: Approuver. Un valideur ne peut pas approuver sa propre demande (RG-007)
+      x-roles:
+        - manager
+        - hr
+        - director
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                comment:
+                  type: string
+      responses:
+        '200':
+          description: Décision enregistrée (immuable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalTask'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /approvals/{id}/reject:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags:
+        - Validations
+      operationId: rejectTask
+      summary: Refuser, avec motif lorsque l'entreprise l'exige (FONC-043)
+      x-roles:
+        - manager
+        - hr
+        - director
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                comment:
+                  type: string
+      responses:
+        '200':
+          description: Décision enregistrée (immuable)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalTask'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /approvals/bulk:
+    post:
+      tags:
+        - Validations
+      operationId: bulkDecideTasks
+      summary: Action rapide sur plusieurs demandes (FONC-045) ; chaque élément est contrôlé individuellement
+      x-roles:
+        - manager
+        - hr
+        - director
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - action
+                - task_ids
+              properties:
+                action:
+                  type: string
+                  enum:
+                    - approve
+                    - reject
+                task_ids:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    type: string
+                    format: uuid
+                comment:
+                  type: string
+      responses:
+        '200':
+          description: Résultat par élément
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - results
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      required:
+                        - task_id
+                        - ok
+                      properties:
+                        task_id:
+                          type: string
+                          format: uuid
+                        ok:
+                          type: boolean
+                        error:
+                          type: string
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /approval-delegations:
+    get:
+      tags:
+        - Validations
+      operationId: listDelegations
+      summary: Délégations de validation (FONC-049)
+      x-roles:
+        - manager
+        - hr
+        - director
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Delegation'
+    post:
+      tags:
+        - Validations
+      operationId: createDelegation
+      summary: Déléguer ses validations pendant une période
+      x-roles:
+        - manager
+        - hr
+        - director
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - delegate_id
+                - start_date
+                - end_date
+              properties:
+                delegate_id:
+                  type: string
+                  format: uuid
+                start_date:
+                  type: string
+                  format: date
+                end_date:
+                  type: string
+                  format: date
+      responses:
+        '201':
+          description: Délégation créée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Delegation'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /approval-delegations/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    delete:
+      tags:
+        - Validations
+      operationId: deleteDelegation
+      summary: Supprimer une délégation
+      x-roles:
+        - manager
+        - hr
+        - director
+      responses:
+        '204':
+          description: Supprimée
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /balances:
+    get:
+      tags:
+        - Soldes
+      operationId: listMyBalances
+      summary: Soldes de l'utilisateur connecté par type de congé (FONC-060)
+      x-roles:
+        - employee
+        - manager
+        - hr
+        - director
+      responses:
+        '200':
+          description: Soldes
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Balance'
+  /employees/{id}/balances:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags:
+        - Soldes
+      operationId: listEmployeeBalances
+      summary: Soldes d'un employé
+      x-roles:
+        - hr
+      responses:
+        '200':
+          description: Soldes
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Balance'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /employees/{id}/ledger:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags:
+        - Soldes
+      operationId: listEmployeeLedger
+      summary: Journal de mouvements de solde (ajout seul)
+      x-roles:
+        - employee
+        - hr
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: leave_type_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Page de mouvements
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LedgerEntry'
+                  next_cursor:
+                    type: string
+                    nullable: true
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /balance-adjustments:
+    get:
+      tags:
+        - Soldes
+      operationId: listBalanceAdjustments
+      summary: Corrections manuelles de solde
+      x-roles:
+        - hr
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/AdjustmentStatus'
+      responses:
+        '200':
+          description: Page de corrections
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BalanceAdjustment'
+                  next_cursor:
+                    type: string
+                    nullable: true
+    post:
+      tags:
+        - Soldes
+      operationId: createBalanceAdjustment
+      summary: Corriger un solde avec motif obligatoire ; validation supplémentaire si configurée (FONC-061 à 063)
+      x-roles:
+        - hr
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - employee_id
+                - leave_type_id
+                - new_value
+                - reason
+              properties:
+                employee_id:
+                  type: string
+                  format: uuid
+                leave_type_id:
+                  type: string
+                  format: uuid
+                new_value:
+                  type: number
+                  description: Nouveau solde disponible
+                reason:
+                  type: string
+                  minLength: 5
+      responses:
+        '201':
+          description: Correction enregistrée (appliquée ou en attente de validation)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BalanceAdjustment'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /balance-adjustments/{id}/approve:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags:
+        - Soldes
+      operationId: approveBalanceAdjustment
+      summary: Valider une correction (l'approbateur diffère du demandeur)
+      x-roles:
+        - hr
+      responses:
+        '200':
+          description: Correction appliquée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BalanceAdjustment'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /balance-adjustments/{id}/reject:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags:
+        - Soldes
+      operationId: rejectBalanceAdjustment
+      summary: Refuser une correction
+      x-roles:
+        - hr
+      responses:
+        '200':
+          description: Correction refusée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BalanceAdjustment'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /calendar/me:
+    get:
+      tags:
+        - Calendrier et disponibilité
+      operationId: getMyCalendar
+      summary: Calendrier personnel (FONC-070)
+      x-roles:
+        - employee
+        - manager
+        - hr
+        - director
+      parameters:
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+      responses:
+        '200':
+          description: Absences et jours non ouvrés de la période
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Calendar'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /calendar:
+    get:
+      tags:
+        - Calendrier et disponibilité
+      operationId: getGlobalCalendar
+      summary: Calendrier global autorisé (FONC-071). Les motifs confidentiels ne sont jamais exposés
+      x-roles:
+        - manager
+        - hr
+        - director
+      parameters:
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - name: department_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Absences autorisées de la période
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Calendar'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /absence-limits:
+    get:
+      tags:
+        - Calendrier et disponibilité
+      operationId: listAbsenceLimits
+      summary: Limites d'absences simultanées
+      x-roles:
+        - hr
+        - director
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AbsenceLimit'
+    post:
+      tags:
+        - Calendrier et disponibilité
+      operationId: createAbsenceLimit
+      summary: Définir une limite (FONC-074)
+      x-roles:
+        - hr
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AbsenceLimitInput'
+      responses:
+        '201':
+          description: Créée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AbsenceLimit'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /absence-limits/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags:
+        - Calendrier et disponibilité
+      operationId: replaceAbsenceLimit
+      summary: Modifier une limite
+      x-roles:
+        - hr
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AbsenceLimitInput'
+      responses:
+        '200':
+          description: Modifiée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AbsenceLimit'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      tags:
+        - Calendrier et disponibilité
+      operationId: deleteAbsenceLimit
+      summary: Supprimer une limite
+      x-roles:
+        - hr
+      responses:
+        '204':
+          description: Supprimée
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /availability/alerts:
+    get:
+      tags:
+        - Calendrier et disponibilité
+      operationId: listAvailabilityAlerts
+      summary: Alertes de disponibilité insuffisante (FONC-075)
+      x-roles:
+        - hr
+        - director
+      parameters:
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+      responses:
+        '200':
+          description: Alertes
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AvailabilityAlert'
+  /dashboard:
+    get:
+      tags:
+        - Tableau de bord
+      operationId: getDashboard
+      summary: Tableau de bord opérationnel (FONC-080)
+      x-roles:
+        - hr
+        - director
+      parameters:
+        - name: department_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Indicateurs du jour
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dashboard'
+  /exports:
+    post:
+      tags:
+        - Exports
+      operationId: createExport
+      summary: Demander un export PDF, Excel ou CSV (FONC-090)
+      description: Génération asynchrone. Les permissions sont vérifiées au moment de la génération (FONC-091) ; l'export est journalisé.
+      x-roles:
+        - hr
+        - director
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - kind
+                - format
+              properties:
+                kind:
+                  type: string
+                  enum:
+                    - leave_requests
+                    - balances
+                    - calendar
+                    - employees
+                    - audit_logs
+                format:
+                  $ref: '#/components/schemas/ExportFormat'
+                filters:
+                  type: object
+                  additionalProperties: true
+      responses:
+        '202':
+          description: Export accepté
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportJob'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /exports/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags:
+        - Exports
+      operationId: getExport
+      summary: État d'un export
+      x-roles:
+        - hr
+        - director
+      responses:
+        '200':
+          description: Export
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportJob'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /exports/{id}/download:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags:
+        - Exports
+      operationId: downloadExport
+      summary: Télécharger un export prêt (URL signée de courte durée ; expire)
+      x-roles:
+        - hr
+        - director
+      responses:
+        '302':
+          description: Redirection vers l'URL signée
+          headers:
+            Location:
+              schema:
+                type: string
+                format: uri
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '410':
+          description: Export expiré
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+  /notifications:
+    get:
+      tags:
+        - Notifications
+      operationId: listNotifications
+      summary: Notifications dans l'application (contenu minimal, sans donnée confidentielle)
+      x-roles:
+        - employee
+        - manager
+        - hr
+        - director
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: unread_only
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Page de notifications
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                  - unread_count
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Notification'
+                  unread_count:
+                    type: integer
+                  next_cursor:
+                    type: string
+                    nullable: true
+  /notifications/{id}/read:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags:
+        - Notifications
+      operationId: markNotificationRead
+      summary: Marquer comme lue
+      x-roles:
+        - employee
+        - manager
+        - hr
+        - director
+      responses:
+        '204':
+          description: Marquée comme lue
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /notifications/read-all:
+    post:
+      tags:
+        - Notifications
+      operationId: markAllNotificationsRead
+      summary: Tout marquer comme lu
+      x-roles:
+        - employee
+        - manager
+        - hr
+        - director
+      responses:
+        '204':
+          description: Marquées comme lues
+  /notification-preferences:
+    get:
+      tags:
+        - Notifications
+      operationId: getNotificationPreferences
+      summary: Préférences de notification
+      x-roles:
+        - employee
+        - manager
+        - hr
+        - director
+      responses:
+        '200':
+          description: Préférences
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/NotificationPreference'
+    put:
+      tags:
+        - Notifications
+      operationId: replaceNotificationPreferences
+      summary: Remplacer les préférences
+      x-roles:
+        - employee
+        - manager
+        - hr
+        - director
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - data
+              properties:
+                data:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/NotificationPreference'
+      responses:
+        '204':
+          description: Préférences enregistrées
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /plans:
+    get:
+      tags:
+        - Abonnement
+      operationId: listPlans
+      summary: Offres disponibles (prix et limites À préciser)
+      x-roles:
+        - hr
+      responses:
+        '200':
+          description: Offres
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Plan'
+  /subscription:
+    get:
+      tags:
+        - Abonnement
+      operationId: getSubscription
+      summary: Abonnement courant, échéance et usage par rapport aux limites
+      x-roles:
+        - hr
+      responses:
+        '200':
+          description: Abonnement
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+  /subscription-requests:
+    get:
+      tags:
+        - Abonnement
+      operationId: listSubscriptionRequests
+      summary: Demandes de changement d'abonnement de l'entreprise
+      x-roles:
+        - hr
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SubscriptionRequest'
+    post:
+      tags:
+        - Abonnement
+      operationId: createSubscriptionRequest
+      summary: Demander un changement d'abonnement ; validation par IT Solution (FONC-112)
+      x-roles:
+        - hr
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - plan_id
+              properties:
+                plan_id:
+                  type: string
+                  format: uuid
+                note:
+                  type: string
+      responses:
+        '201':
+          description: Demande enregistrée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /support/tickets:
+    get:
+      tags:
+        - Support
+      operationId: listTickets
+      summary: 'Tickets de support et retours de l''utilisateur (RH : de l''entreprise)'
+      x-roles:
+        - employee
+        - manager
+        - hr
+        - director
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page de tickets
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SupportTicket'
+                  next_cursor:
+                    type: string
+                    nullable: true
+    post:
+      tags:
+        - Support
+      operationId: createTicket
+      summary: Contacter le support ou envoyer un retour (FONC-120, FONC-121)
+      x-roles:
+        - employee
+        - manager
+        - hr
+        - director
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - kind
+                - subject
+                - body
+              properties:
+                kind:
+                  $ref: '#/components/schemas/TicketKind'
+                subject:
+                  type: string
+                  maxLength: 200
+                body:
+                  type: string
+                  maxLength: 10000
+      responses:
+        '201':
+          description: Ticket créé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupportTicket'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /support/tickets/{id}/messages:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags:
+        - Support
+      operationId: listTicketMessages
+      summary: Échanges d'un ticket
+      x-roles:
+        - employee
+        - manager
+        - hr
+        - director
+      responses:
+        '200':
+          description: Messages
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TicketMessage'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags:
+        - Support
+      operationId: addTicketMessage
+      summary: Répondre dans un ticket
+      x-roles:
+        - employee
+        - manager
+        - hr
+        - director
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - body
+              properties:
+                body:
+                  type: string
+                  maxLength: 10000
+      responses:
+        '201':
+          description: Message ajouté
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketMessage'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /audit-logs:
+    get:
+      tags:
+        - Audit
+      operationId: listAuditLogs
+      summary: Journal d'audit de l'entreprise, lecture seule (FONC-132)
+      description: Inclut les interventions des administrateurs de plateforme sur l'entreprise (SEC-014).
+      x-roles:
+        - hr
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: action
+          in: query
+          schema:
+            type: string
+        - name: entity_type
+          in: query
+          schema:
+            type: string
+        - name: entity_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+      responses:
+        '200':
+          description: Page d'entrées
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AuditLog'
+                  next_cursor:
+                    type: string
+                    nullable: true
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /platform/auth/login:
+    post:
+      tags:
+        - Plateforme
+      operationId: platformLogin
+      summary: Connexion d'un administrateur de plateforme (étape 1) ; MFA obligatoire
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+      responses:
+        '200':
+          description: Code de vérification envoyé
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - challenge_id
+                properties:
+                  challenge_id:
+                    type: string
+                    format: uuid
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /platform/auth/login/verify-otp:
+    post:
+      tags:
+        - Plateforme
+      operationId: platformVerifyOtp
+      summary: Code de vérification (étape 2) et ouverture de session plateforme
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - challenge_id
+                - code
+              properties:
+                challenge_id:
+                  type: string
+                  format: uuid
+                code:
+                  type: string
+                  pattern: ^[0-9]{6}$
+      responses:
+        '200':
+          description: Session plateforme ouverte (cookie)
+          headers:
+            Set-Cookie:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /platform/companies:
+    get:
+      tags:
+        - Plateforme
+      operationId: platformListCompanies
+      summary: Entreprises (identité, statut, abonnement ; aucune donnée métier)
+      x-roles:
+        - platform
+      security:
+        - platformSessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/CompanyStatus'
+      responses:
+        '200':
+          description: Page d'entreprises
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PlatformCompany'
+                  next_cursor:
+                    type: string
+                    nullable: true
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /platform/companies/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags:
+        - Plateforme
+      operationId: platformGetCompany
+      summary: Détail d'une entreprise
+      x-roles:
+        - platform
+      security:
+        - platformSessionCookie: []
+          csrfToken: []
+      responses:
+        '200':
+          description: Entreprise
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformCompany'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /platform/companies/{id}/suspend:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags:
+        - Plateforme
+      operationId: platformSuspendCompany
+      summary: Suspendre une entreprise (motif obligatoire, journalisé)
+      x-roles:
+        - platform
+      security:
+        - platformSessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - reason
+              properties:
+                reason:
+                  type: string
+                  minLength: 10
+      responses:
+        '200':
+          description: Entreprise suspendue
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformCompany'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /platform/companies/{id}/reactivate:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags:
+        - Plateforme
+      operationId: platformReactivateCompany
+      summary: Réactiver une entreprise suspendue
+      x-roles:
+        - platform
+      security:
+        - platformSessionCookie: []
+          csrfToken: []
+      responses:
+        '200':
+          description: Entreprise réactivée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformCompany'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /platform/subscription-requests:
+    get:
+      tags:
+        - Plateforme
+      operationId: platformListSubscriptionRequests
+      summary: Demandes de changement d'abonnement à valider
+      x-roles:
+        - platform
+      security:
+        - platformSessionCookie: []
+          csrfToken: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/RequestStatus'
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SubscriptionRequest'
+  /platform/subscription-requests/{id}/decision:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags:
+        - Plateforme
+      operationId: platformDecideSubscriptionRequest
+      summary: Valider ou refuser un changement d'abonnement
+      x-roles:
+        - platform
+      security:
+        - platformSessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - decision
+              properties:
+                decision:
+                  type: string
+                  enum:
+                    - approved
+                    - rejected
+                note:
+                  type: string
+      responses:
+        '200':
+          description: Décision enregistrée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /platform/plans:
+    get:
+      tags:
+        - Plateforme
+      operationId: platformListPlans
+      summary: Offres (inclut les offres inactives)
+      x-roles:
+        - platform
+      security:
+        - platformSessionCookie: []
+          csrfToken: []
+      responses:
+        '200':
+          description: Offres
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Plan'
+    post:
+      tags:
+        - Plateforme
+      operationId: platformCreatePlan
+      summary: Créer une offre (les valeurs commerciales sont saisies par IT Solution)
+      x-roles:
+        - platform
+      security:
+        - platformSessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanInput'
+      responses:
+        '201':
+          description: Offre créée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Plan'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /platform/plans/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    patch:
+      tags:
+        - Plateforme
+      operationId: platformUpdatePlan
+      summary: Modifier une offre
+      x-roles:
+        - platform
+      security:
+        - platformSessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanInput'
+      responses:
+        '200':
+          description: Offre modifiée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Plan'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /platform/incidents:
+    get:
+      tags:
+        - Plateforme
+      operationId: platformListIncidents
+      summary: Incidents de service
+      x-roles:
+        - platform
+      security:
+        - platformSessionCookie: []
+          csrfToken: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/IncidentStatus'
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Incident'
+    post:
+      tags:
+        - Plateforme
+      operationId: platformCreateIncident
+      summary: Enregistrer un incident (gravité, entreprises concernées)
+      x-roles:
+        - platform
+      security:
+        - platformSessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IncidentInput'
+      responses:
+        '201':
+          description: Incident créé
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Incident'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /platform/incidents/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    patch:
+      tags:
+        - Plateforme
+      operationId: platformUpdateIncident
+      summary: Mettre à jour un incident (statut, cause, mesures préventives, résolution)
+      x-roles:
+        - platform
+      security:
+        - platformSessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IncidentInput'
+      responses:
+        '200':
+          description: Incident mis à jour
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Incident'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /platform/incidents/{id}/updates:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags:
+        - Plateforme
+      operationId: platformAddIncidentUpdate
+      summary: Publier une mise à jour ; option de communication aux entreprises concernées
+      x-roles:
+        - platform
+      security:
+        - platformSessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - body
+              properties:
+                body:
+                  type: string
+                notify_companies:
+                  type: boolean
+                  default: false
+      responses:
+        '201':
+          description: Mise à jour publiée
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /platform/support/tickets:
+    get:
+      tags:
+        - Plateforme
+      operationId: platformListTickets
+      summary: Tickets de support de toutes les entreprises
+      x-roles:
+        - platform
+      security:
+        - platformSessionCookie: []
+          csrfToken: []
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/TicketStatus'
+      responses:
+        '200':
+          description: Page de tickets
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SupportTicket'
+                  next_cursor:
+                    type: string
+                    nullable: true
+  /platform/admins:
+    get:
+      tags:
+        - Plateforme
+      operationId: platformListAdmins
+      summary: 'Administrateurs de plateforme (OUV-002 : nombre et rôles à décider)'
+      x-roles:
+        - platform
+      security:
+        - platformSessionCookie: []
+          csrfToken: []
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PlatformAdmin'
+    post:
+      tags:
+        - Plateforme
+      operationId: platformCreateAdmin
+      summary: Créer un administrateur (permission platform_admins.manage)
+      x-roles:
+        - platform
+      security:
+        - platformSessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - platform_role_id
+              properties:
+                email:
+                  type: string
+                  format: email
+                platform_role_id:
+                  type: string
+                  format: uuid
+      responses:
+        '201':
+          description: Administrateur créé (invitation envoyée)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformAdmin'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /platform/roles:
+    get:
+      tags:
+        - Plateforme
+      operationId: platformListRoles
+      summary: Rôles de plateforme et leurs permissions
+      x-roles:
+        - platform
+      security:
+        - platformSessionCookie: []
+          csrfToken: []
+      responses:
+        '200':
+          description: Liste
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PlatformRole'
+  /platform/access-grants:
+    post:
+      tags:
+        - Plateforme
+      operationId: platformCreateAccessGrant
+      summary: Demander une intervention sur les données d'une entreprise (justifiée, limitée, approuvée par un autre administrateur — SEC-014)
+      x-roles:
+        - platform
+      security:
+        - platformSessionCookie: []
+          csrfToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - company_id
+                - reason
+                - expires_at
+              properties:
+                company_id:
+                  type: string
+                  format: uuid
+                reason:
+                  type: string
+                  minLength: 10
+                expires_at:
+                  type: string
+                  format: date-time
+      responses:
+        '201':
+          description: Demande créée (en attente d'approbation)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessGrant'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /platform/access-grants/{id}/approve:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags:
+        - Plateforme
+      operationId: platformApproveAccessGrant
+      summary: Approuver (l'approbateur ne peut pas être le demandeur)
+      x-roles:
+        - platform
+      security:
+        - platformSessionCookie: []
+          csrfToken: []
+      responses:
+        '200':
+          description: Intervention approuvée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessGrant'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /platform/access-grants/{id}/revoke:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags:
+        - Plateforme
+      operationId: platformRevokeAccessGrant
+      summary: Révoquer une intervention
+      x-roles:
+        - platform
+      security:
+        - platformSessionCookie: []
+          csrfToken: []
+      responses:
+        '200':
+          description: Intervention révoquée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessGrant'
+        '404':
+          $ref: '#/components/responses/NotFound'
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: __Host-session
+      description: Session employé (HttpOnly, Secure, SameSite). L'entreprise active est portée par la session côté serveur.
+    platformSessionCookie:
+      type: apiKey
+      in: cookie
+      name: __Host-platform-session
+      description: Session administrateur de plateforme (distincte de la session employé).
+    csrfToken:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+      description: Obligatoire pour les requêtes qui modifient des données.
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 25
+    Cursor:
+      name: cursor
+      in: query
+      description: Curseur opaque renvoyé par `next_cursor`
+      schema:
+        type: string
+    From:
+      name: from
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date
+    To:
+      name: to
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Clé unique générée par le client pour rendre la création rejouable sans doublon.
+      schema:
+        type: string
+        maxLength: 100
+  responses:
+    BadRequest:
+      description: Requête invalide ou jeton invalide, expiré ou déjà utilisé
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: Non authentifié ou identifiants invalides (message générique)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Forbidden:
+      description: Permission insuffisante
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    NotFound:
+      description: Ressource introuvable (y compris si elle appartient à une autre entreprise)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Conflict:
+      description: Conflit d'état ou de données (doublon, transition interdite, chevauchement)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    ValidationError:
+      description: Données invalides ou règle métier non respectée
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    PayloadTooLarge:
+      description: Fichier trop volumineux (limite À préciser)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    TooManyRequests:
+      description: Trop de requêtes
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: Secondes avant nouvel essai
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  schemas:
+    Problem:
+      type: object
+      required:
+        - type
+        - title
+        - status
+      properties:
+        type:
+          type: string
+          description: URI ou code stable, ex. leave.overlap
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        request_id:
+          type: string
+        errors:
+          type: array
+          items:
+            type: object
+            required:
+              - field
+              - message
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+    Membership:
+      type: object
+      required:
+        - company_id
+        - company_name
+        - employee_id
+        - role
+      properties:
+        company_id:
+          type: string
+          format: uuid
+        company_name:
+          type: string
+        employee_id:
+          type: string
+          format: uuid
+        role:
+          $ref: '#/components/schemas/EmployeeRole'
+    Me:
+      type: object
+      required:
+        - employee_id
+        - email
+        - first_name
+        - last_name
+        - role
+        - is_manager
+        - permissions
+      properties:
+        employee_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        first_name:
+          type: string
+        last_name:
+          type: string
+        role:
+          $ref: '#/components/schemas/EmployeeRole'
+        is_manager:
+          type: boolean
+          description: Vrai si l'employé est le responsable d'au moins un employé
+        department_id:
+          type: string
+          format: uuid
+          nullable: true
+        permissions:
+          type: array
+          items:
+            type: string
+        locale:
+          type: string
+          example: fr
+    CompanyStatus:
+      type: string
+      enum:
+        - pending_verification
+        - active
+        - suspended
+        - closed
+    Company:
+      type: object
+      required:
+        - id
+        - name
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        status:
+          $ref: '#/components/schemas/CompanyStatus'
+        country_code:
+          type: string
+          nullable: true
+        timezone:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+    CompanySettings:
+      type: object
+      properties:
+        working_days:
+          type: array
+          description: Jours ISO, 1 = lundi à 7 = dimanche
+          items:
+            type: integer
+            minimum: 1
+            maximum: 7
+          minItems: 1
+          uniqueItems: true
+        allow_half_days:
+          type: boolean
+        allow_negative_balance:
+          type: boolean
+        count_pending_in_available:
+          type: boolean
+        rejection_reason_required:
+          type: boolean
+        adjustment_requires_approval:
+          type: boolean
+        post_approval_cancellation:
+          type: string
+          enum:
+            - not_allowed
+            - before_start
+            - request_approval
+        urgent_rules:
+          type: object
+          additionalProperties: true
+    HolidayInput:
+      type: object
+      required:
+        - holiday_date
+        - label
+      properties:
+        holiday_date:
+          type: string
+          format: date
+        label:
+          type: string
+        is_recurring:
+          type: boolean
+          default: false
+    Holiday:
+      allOf:
+        - $ref: '#/components/schemas/HolidayInput'
+        - type: object
+          required:
+            - id
+          properties:
+            id:
+              type: string
+              format: uuid
+    EmployeeRole:
+      type: string
+      enum:
+        - employee
+        - hr
+        - director
+      description: Le responsable hiérarchique est déduit de manager_id, ce n'est pas un rôle
+    EmployeeStatus:
+      type: string
+      enum:
+        - invited
+        - active
+        - deactivated
+        - anonymized
+    DepartmentInput:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        parent_id:
+          type: string
+          format: uuid
+          nullable: true
+    Department:
+      allOf:
+        - $ref: '#/components/schemas/DepartmentInput'
+        - type: object
+          required:
+            - id
+          properties:
+            id:
+              type: string
+              format: uuid
+            employee_count:
+              type: integer
+    EmployeeInput:
+      type: object
+      required:
+        - email
+        - first_name
+        - last_name
+      properties:
+        email:
+          type: string
+          format: email
+        first_name:
+          type: string
+        last_name:
+          type: string
+        employee_number:
+          type: string
+          nullable: true
+        job_title:
+          type: string
+          nullable: true
+        department_id:
+          type: string
+          format: uuid
+          nullable: true
+        manager_id:
+          type: string
+          format: uuid
+          nullable: true
+        role:
+          $ref: '#/components/schemas/EmployeeRole'
+        hire_date:
+          type: string
+          format: date
+          nullable: true
+        send_invitation:
+          type: boolean
+          default: true
+    EmployeeUpdate:
+      type: object
+      description: Les champs sensibles (rôle, rattachement, dates) exigent le rôle RH et sont journalisés avec l'ancienne valeur.
+      properties:
+        first_name:
+          type: string
+        last_name:
+          type: string
+        employee_number:
+          type: string
+          nullable: true
+        job_title:
+          type: string
+          nullable: true
+        department_id:
+          type: string
+          format: uuid
+          nullable: true
+        manager_id:
+          type: string
+          format: uuid
+          nullable: true
+        role:
+          $ref: '#/components/schemas/EmployeeRole'
+        hire_date:
+          type: string
+          format: date
+          nullable: true
+        end_date:
+          type: string
+          format: date
+          nullable: true
+    Employee:
+      type: object
+      required:
+        - id
+        - email
+        - first_name
+        - last_name
+        - role
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        first_name:
+          type: string
+        last_name:
+          type: string
+        employee_number:
+          type: string
+          nullable: true
+        job_title:
+          type: string
+          nullable: true
+        department_id:
+          type: string
+          format: uuid
+          nullable: true
+        manager_id:
+          type: string
+          format: uuid
+          nullable: true
+        role:
+          $ref: '#/components/schemas/EmployeeRole'
+        status:
+          $ref: '#/components/schemas/EmployeeStatus'
+        hire_date:
+          type: string
+          format: date
+          nullable: true
+        end_date:
+          type: string
+          format: date
+          nullable: true
+        deactivated_at:
+          type: string
+          format: date-time
+          nullable: true
+    ImportJob:
+      type: object
+      required:
+        - id
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/JobStatus'
+        dry_run:
+          type: boolean
+        total_rows:
+          type: integer
+          nullable: true
+        imported_rows:
+          type: integer
+          nullable: true
+        failed_rows:
+          type: integer
+          nullable: true
+        errors:
+          type: array
+          items:
+            type: object
+            required:
+              - row
+              - message
+            properties:
+              row:
+                type: integer
+              field:
+                type: string
+              message:
+                type: string
+        created_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+    LeaveRequestStatus:
+      type: string
+      enum:
+        - draft
+        - pending
+        - approved
+        - rejected
+        - cancelled
+    AttachmentPolicy:
+      type: string
+      enum:
+        - none
+        - optional
+        - required
+    ScanStatus:
+      type: string
+      enum:
+        - pending
+        - clean
+        - infected
+    DayPart:
+      type: string
+      enum:
+        - full
+        - morning
+        - afternoon
+    LeaveTypeInput:
+      type: object
+      properties:
+        code:
+          type: string
+          maxLength: 40
+        name:
+          type: string
+        deducts_balance:
+          type: boolean
+        attachment_policy:
+          $ref: '#/components/schemas/AttachmentPolicy'
+        is_confidential:
+          type: boolean
+        color:
+          type: string
+          pattern: ^#[0-9A-Fa-f]{6}$
+        min_notice_days:
+          type: integer
+          minimum: 0
+        max_consecutive_days:
+          type: integer
+          minimum: 1
+          nullable: true
+        approval_workflow_id:
+          type: string
+          format: uuid
+          nullable: true
+        is_active:
+          type: boolean
+    LeaveType:
+      allOf:
+        - $ref: '#/components/schemas/LeaveTypeInput'
+        - type: object
+          required:
+            - id
+            - code
+            - name
+          properties:
+            id:
+              type: string
+              format: uuid
+    LeavePolicyInput:
+      type: object
+      required:
+        - effective_from
+      properties:
+        annual_entitlement_days:
+          type: number
+          minimum: 0
+          nullable: true
+        accrual_mode:
+          type: string
+          enum:
+            - none
+            - upfront
+            - monthly
+          nullable: true
+        carry_over_max_days:
+          type: number
+          minimum: 0
+          nullable: true
+        carry_over_expires_after_months:
+          type: integer
+          minimum: 1
+          nullable: true
+        effective_from:
+          type: string
+          format: date
+        effective_to:
+          type: string
+          format: date
+          nullable: true
+    LeavePolicy:
+      allOf:
+        - $ref: '#/components/schemas/LeavePolicyInput'
+        - type: object
+          required:
+            - id
+            - leave_type_id
+          properties:
+            id:
+              type: string
+              format: uuid
+            leave_type_id:
+              type: string
+              format: uuid
+    LeaveRequestInput:
+      type: object
+      required:
+        - leave_type_id
+        - start_date
+        - end_date
+      properties:
+        employee_id:
+          type: string
+          format: uuid
+          description: Réservé aux RH qui saisissent pour un employé ; ignoré sinon
+        leave_type_id:
+          type: string
+          format: uuid
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        start_part:
+          type: string
+          enum:
+            - full
+            - afternoon
+          default: full
+          description: À préciser (demi-journées)
+        end_part:
+          type: string
+          enum:
+            - full
+            - morning
+          default: full
+        is_urgent:
+          type: boolean
+          default: false
+        reason:
+          type: string
+          maxLength: 2000
+          description: Confidentiel
+        submit:
+          type: boolean
+          default: false
+          description: Soumettre immédiatement au lieu d'enregistrer un brouillon
+    LeaveRequestPreview:
+      type: object
+      required:
+        - days_count
+        - valid
+      properties:
+        valid:
+          type: boolean
+        days_count:
+          type: number
+        balance_available_before:
+          type: number
+          nullable: true
+        balance_available_after:
+          type: number
+          nullable: true
+        attachment_required:
+          type: boolean
+        conflicts:
+          type: array
+          items:
+            type: object
+            required:
+              - kind
+              - message
+            properties:
+              kind:
+                type: string
+                enum:
+                  - own_overlap
+                  - absence_limit
+                  - notice
+                  - max_consecutive
+                  - insufficient_balance
+              message:
+                type: string
+              blocking:
+                type: boolean
+    LeaveRequest:
+      type: object
+      required:
+        - id
+        - employee_id
+        - leave_type_id
+        - start_date
+        - end_date
+        - days_count
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        employee_id:
+          type: string
+          format: uuid
+        leave_type_id:
+          type: string
+          format: uuid
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        start_part:
+          type: string
+          enum:
+            - full
+            - afternoon
+        end_part:
+          type: string
+          enum:
+            - full
+            - morning
+        days_count:
+          type: number
+        status:
+          $ref: '#/components/schemas/LeaveRequestStatus'
+        is_urgent:
+          type: boolean
+        reason:
+          type: string
+          nullable: true
+          description: Présent uniquement pour le demandeur et les rôles autorisés
+        parent_request_id:
+          type: string
+          format: uuid
+          nullable: true
+        decisions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Decision'
+        submitted_at:
+          type: string
+          format: date-time
+          nullable: true
+        decided_at:
+          type: string
+          format: date-time
+          nullable: true
+        cancelled_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+    Attachment:
+      type: object
+      required:
+        - id
+        - original_name
+        - mime_type
+        - size_bytes
+        - scan_status
+      properties:
+        id:
+          type: string
+          format: uuid
+        original_name:
+          type: string
+        mime_type:
+          type: string
+        size_bytes:
+          type: integer
+        scan_status:
+          $ref: '#/components/schemas/ScanStatus'
+        created_at:
+          type: string
+          format: date-time
+    ApprovalTaskStatus:
+      type: string
+      enum:
+        - pending
+        - approved
+        - rejected
+        - skipped
+        - cancelled
+    ApproverKind:
+      type: string
+      enum:
+        - hr
+        - manager
+        - director
+        - specific_employee
+    WorkflowStep:
+      type: object
+      required:
+        - step_order
+        - approver_kind
+      properties:
+        step_order:
+          type: integer
+          minimum: 1
+        approver_kind:
+          $ref: '#/components/schemas/ApproverKind'
+        approver_employee_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Requis si approver_kind = specific_employee
+    WorkflowInput:
+      type: object
+      required:
+        - name
+        - steps
+      properties:
+        name:
+          type: string
+        is_default:
+          type: boolean
+        is_active:
+          type: boolean
+        steps:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/WorkflowStep'
+    Workflow:
+      allOf:
+        - $ref: '#/components/schemas/WorkflowInput'
+        - type: object
+          required:
+            - id
+          properties:
+            id:
+              type: string
+              format: uuid
+    Decision:
+      type: object
+      required:
+        - step_order
+        - status
+      properties:
+        step_order:
+          type: integer
+        status:
+          $ref: '#/components/schemas/ApprovalTaskStatus'
+        decided_by_employee_id:
+          type: string
+          format: uuid
+          nullable: true
+        decided_at:
+          type: string
+          format: date-time
+          nullable: true
+        comment:
+          type: string
+          nullable: true
+    ApprovalTask:
+      type: object
+      required:
+        - id
+        - leave_request_id
+        - step_order
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        leave_request_id:
+          type: string
+          format: uuid
+        step_order:
+          type: integer
+        status:
+          $ref: '#/components/schemas/ApprovalTaskStatus'
+        employee:
+          $ref: '#/components/schemas/EmployeeSummary'
+        leave_type_name:
+          type: string
+          description: Libellé masqué si le type est confidentiel pour ce valideur
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        days_count:
+          type: number
+        is_urgent:
+          type: boolean
+        comment:
+          type: string
+          nullable: true
+        decided_at:
+          type: string
+          format: date-time
+          nullable: true
+    Delegation:
+      type: object
+      required:
+        - id
+        - delegator_id
+        - delegate_id
+        - start_date
+        - end_date
+      properties:
+        id:
+          type: string
+          format: uuid
+        delegator_id:
+          type: string
+          format: uuid
+        delegate_id:
+          type: string
+          format: uuid
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+    AdjustmentStatus:
+      type: string
+      enum:
+        - pending_approval
+        - applied
+        - rejected
+    LedgerEntryType:
+      type: string
+      enum:
+        - accrual
+        - carry_over
+        - expiration
+        - adjustment
+        - leave_debit
+        - leave_credit
+    EmployeeSummary:
+      type: object
+      required:
+        - id
+        - first_name
+        - last_name
+      properties:
+        id:
+          type: string
+          format: uuid
+        first_name:
+          type: string
+        last_name:
+          type: string
+        department_id:
+          type: string
+          format: uuid
+          nullable: true
+    Balance:
+      type: object
+      required:
+        - leave_type_id
+        - available_days
+      properties:
+        employee_id:
+          type: string
+          format: uuid
+        leave_type_id:
+          type: string
+          format: uuid
+        accrued_days:
+          type: number
+        expired_days:
+          type: number
+        adjustment_days:
+          type: number
+        used_days:
+          type: number
+        reserved_days:
+          type: number
+          description: Jours de demandes approuvées à venir
+        pending_days:
+          type: number
+        available_days:
+          type: number
+        available_after_pending_days:
+          type: number
+    LedgerEntry:
+      type: object
+      required:
+        - id
+        - entry_type
+        - days
+        - effective_date
+      properties:
+        id:
+          type: string
+          format: uuid
+        leave_type_id:
+          type: string
+          format: uuid
+        entry_type:
+          $ref: '#/components/schemas/LedgerEntryType'
+        days:
+          type: number
+          description: 'Signé : + crédit, - débit'
+        effective_date:
+          type: string
+          format: date
+        leave_request_id:
+          type: string
+          format: uuid
+          nullable: true
+        adjustment_id:
+          type: string
+          format: uuid
+          nullable: true
+        note:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+    BalanceAdjustment:
+      type: object
+      required:
+        - id
+        - employee_id
+        - leave_type_id
+        - old_value
+        - new_value
+        - reason
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        employee_id:
+          type: string
+          format: uuid
+        leave_type_id:
+          type: string
+          format: uuid
+        old_value:
+          type: number
+        new_value:
+          type: number
+        delta:
+          type: number
+        reason:
+          type: string
+        status:
+          $ref: '#/components/schemas/AdjustmentStatus'
+        requested_by_employee_id:
+          type: string
+          format: uuid
+        approved_by_employee_id:
+          type: string
+          format: uuid
+          nullable: true
+        requested_at:
+          type: string
+          format: date-time
+        decided_at:
+          type: string
+          format: date-time
+          nullable: true
+    CalendarEntry:
+      type: object
+      required:
+        - leave_request_id
+        - employee
+        - start_date
+        - end_date
+        - status
+        - label
+      description: Ne contient jamais le motif. Le libellé vaut « Absent » si le type est confidentiel.
+      properties:
+        leave_request_id:
+          type: string
+          format: uuid
+        employee:
+          $ref: '#/components/schemas/EmployeeSummary'
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        start_part:
+          type: string
+          enum:
+            - full
+            - afternoon
+        end_part:
+          type: string
+          enum:
+            - full
+            - morning
+        status:
+          type: string
+          enum:
+            - pending
+            - approved
+        label:
+          type: string
+    Calendar:
+      type: object
+      required:
+        - entries
+        - non_working_days
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: '#/components/schemas/CalendarEntry'
+        non_working_days:
+          type: array
+          items:
+            type: object
+            required:
+              - date
+              - kind
+            properties:
+              date:
+                type: string
+                format: date
+              kind:
+                type: string
+                enum:
+                  - weekend
+                  - holiday
+              label:
+                type: string
+                nullable: true
+    AbsenceLimitInput:
+      type: object
+      required:
+        - scope
+        - mode
+      properties:
+        scope:
+          type: string
+          enum:
+            - company
+            - department
+        department_id:
+          type: string
+          format: uuid
+          nullable: true
+        max_simultaneous:
+          type: integer
+          minimum: 0
+          nullable: true
+        min_available_percent:
+          type: number
+          minimum: 0
+          maximum: 100
+          nullable: true
+        mode:
+          type: string
+          enum:
+            - warn
+            - block
+          description: À préciser (RG-006)
+    AbsenceLimit:
+      allOf:
+        - $ref: '#/components/schemas/AbsenceLimitInput'
+        - type: object
+          required:
+            - id
+          properties:
+            id:
+              type: string
+              format: uuid
+    AvailabilityAlert:
+      type: object
+      required:
+        - date
+        - scope
+        - absent_count
+      properties:
+        date:
+          type: string
+          format: date
+        scope:
+          type: string
+          enum:
+            - company
+            - department
+        department_id:
+          type: string
+          format: uuid
+          nullable: true
+        absent_count:
+          type: integer
+        available_percent:
+          type: number
+        limit_id:
+          type: string
+          format: uuid
+    Dashboard:
+      type: object
+      required:
+        - absent_today
+        - available_today
+        - pending_requests_count
+        - upcoming_absences
+        - availability_by_department
+        - alerts
+      properties:
+        absent_today:
+          type: array
+          items:
+            $ref: '#/components/schemas/EmployeeSummary'
+        available_today:
+          type: integer
+        pending_requests_count:
+          type: integer
+        upcoming_absences:
+          type: array
+          items:
+            $ref: '#/components/schemas/CalendarEntry'
+        availability_by_department:
+          type: array
+          items:
+            type: object
+            required:
+              - department_id
+              - available
+              - total
+            properties:
+              department_id:
+                type: string
+                format: uuid
+                nullable: true
+              available:
+                type: integer
+              total:
+                type: integer
+        alerts:
+          type: array
+          items:
+            $ref: '#/components/schemas/AvailabilityAlert'
+    Notification:
+      type: object
+      required:
+        - id
+        - event_type
+        - title
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+          nullable: true
+          description: Contenu minimal, jamais de motif
+        entity_type:
+          type: string
+          nullable: true
+        entity_id:
+          type: string
+          format: uuid
+          nullable: true
+        read_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+    NotificationPreference:
+      type: object
+      required:
+        - event_type
+        - in_app
+        - email
+      properties:
+        event_type:
+          type: string
+        in_app:
+          type: boolean
+        email:
+          type: boolean
+    RequestStatus:
+      type: string
+      enum:
+        - pending
+        - approved
+        - rejected
+        - cancelled
+    SubscriptionStatus:
+      type: string
+      enum:
+        - active
+        - grace_period
+        - restricted
+        - cancelled
+    PlanInput:
+      type: object
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        max_employees:
+          type: integer
+          minimum: 1
+          nullable: true
+        features:
+          type: object
+          additionalProperties: true
+        price_amount:
+          type: number
+          minimum: 0
+          nullable: true
+        price_currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          nullable: true
+        is_active:
+          type: boolean
+    Plan:
+      allOf:
+        - $ref: '#/components/schemas/PlanInput'
+        - type: object
+          required:
+            - id
+            - code
+            - name
+          properties:
+            id:
+              type: string
+              format: uuid
+    Subscription:
+      type: object
+      required:
+        - plan
+        - status
+      properties:
+        plan:
+          $ref: '#/components/schemas/Plan'
+        status:
+          $ref: '#/components/schemas/SubscriptionStatus'
+        current_period_end:
+          type: string
+          format: date-time
+          nullable: true
+        grace_ends_at:
+          type: string
+          format: date-time
+          nullable: true
+        employee_count:
+          type: integer
+    SubscriptionRequest:
+      type: object
+      required:
+        - id
+        - requested_plan_id
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        company_id:
+          type: string
+          format: uuid
+          description: Présent uniquement côté plateforme
+        requested_plan_id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/RequestStatus'
+        requested_at:
+          type: string
+          format: date-time
+        decided_at:
+          type: string
+          format: date-time
+          nullable: true
+        decision_note:
+          type: string
+          nullable: true
+    TicketKind:
+      type: string
+      enum:
+        - support
+        - feedback
+    TicketStatus:
+      type: string
+      enum:
+        - open
+        - in_progress
+        - resolved
+        - closed
+    SupportTicket:
+      type: object
+      required:
+        - id
+        - kind
+        - subject
+        - status
+        - severity
+      properties:
+        id:
+          type: string
+          format: uuid
+        company_id:
+          type: string
+          format: uuid
+          description: Présent uniquement côté plateforme
+        kind:
+          $ref: '#/components/schemas/TicketKind'
+        subject:
+          type: string
+        body:
+          type: string
+        severity:
+          $ref: '#/components/schemas/SeverityLevel'
+        status:
+          $ref: '#/components/schemas/TicketStatus'
+        created_at:
+          type: string
+          format: date-time
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
+    TicketMessage:
+      type: object
+      required:
+        - id
+        - author_type
+        - body
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        author_type:
+          type: string
+          enum:
+            - employee
+            - platform_admin
+        body:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    JobStatus:
+      type: string
+      enum:
+        - queued
+        - running
+        - succeeded
+        - failed
+        - expired
+    ExportFormat:
+      type: string
+      enum:
+        - pdf
+        - xlsx
+        - csv
+    SeverityLevel:
+      type: string
+      enum:
+        - low
+        - medium
+        - high
+        - critical
+    IncidentStatus:
+      type: string
+      enum:
+        - detected
+        - investigating
+        - mitigated
+        - resolved
+        - closed
+    ExportJob:
+      type: object
+      required:
+        - id
+        - kind
+        - format
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+        format:
+          $ref: '#/components/schemas/ExportFormat'
+        status:
+          $ref: '#/components/schemas/JobStatus'
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+    PlatformCompany:
+      type: object
+      required:
+        - id
+        - name
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        status:
+          $ref: '#/components/schemas/CompanyStatus'
+        country_code:
+          type: string
+          nullable: true
+        employee_count:
+          type: integer
+        subscription_status:
+          $ref: '#/components/schemas/SubscriptionStatus'
+        plan_code:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+    IncidentInput:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        severity:
+          $ref: '#/components/schemas/SeverityLevel'
+        status:
+          $ref: '#/components/schemas/IncidentStatus'
+        affected_company_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        root_cause:
+          type: string
+          nullable: true
+        preventive_measures:
+          type: string
+          nullable: true
+    Incident:
+      allOf:
+        - $ref: '#/components/schemas/IncidentInput'
+        - type: object
+          required:
+            - id
+            - title
+            - severity
+            - status
+          properties:
+            id:
+              type: string
+              format: uuid
+            detected_at:
+              type: string
+              format: date-time
+            resolved_at:
+              type: string
+              format: date-time
+              nullable: true
+            customer_communication_sent_at:
+              type: string
+              format: date-time
+              nullable: true
+    PlatformAdmin:
+      type: object
+      required:
+        - id
+        - email
+        - platform_role_id
+        - is_active
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        platform_role_id:
+          type: string
+          format: uuid
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+    PlatformRole:
+      type: object
+      required:
+        - id
+        - code
+        - name
+        - permissions
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        name:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
+    AccessGrant:
+      type: object
+      required:
+        - id
+        - company_id
+        - platform_admin_id
+        - reason
+        - expires_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        company_id:
+          type: string
+          format: uuid
+        platform_admin_id:
+          type: string
+          format: uuid
+        approved_by_platform_admin_id:
+          type: string
+          format: uuid
+          nullable: true
+        reason:
+          type: string
+        granted_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+    AuditLog:
+      type: object
+      required:
+        - id
+        - actor_type
+        - action
+        - entity_type
+        - created_at
+      properties:
+        id:
+          type: integer
+          format: int64
+        actor_type:
+          type: string
+          enum:
+            - employee
+            - platform_admin
+            - system
+        actor_employee_id:
+          type: string
+          format: uuid
+          nullable: true
+        action:
+          type: string
+          example: balance.adjusted
+        entity_type:
+          type: string
+        entity_id:
+          type: string
+          format: uuid
+          nullable: true
+        before_data:
+          type: object
+          additionalProperties: true
+          nullable: true
+        after_data:
+          type: object
+          additionalProperties: true
+          nullable: true
+        ip:
+          type: string
+          nullable: true
+        request_id:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
