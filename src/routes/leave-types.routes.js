@@ -1,7 +1,12 @@
-const express = require('express');
+const { Router } = require('express');
+const leaveTypeController = require('../controllers/leave-type.controller');
 
-const router = express.Router();
+const router = Router();
 
-// TODO: Déclarer les routes du module leave-types.
+router.get('/', leaveTypeController.listLeaveTypes);
+router.post('/', leaveTypeController.createLeaveType);
+router.patch('/:id', leaveTypeController.updateLeaveType);
+router.get('/:id/policies', leaveTypeController.listLeavePolicies);
+router.post('/:id/policies', leaveTypeController.createLeavePolicy);
 
 module.exports = router;
