@@ -1,6 +1,7 @@
 const express = require('express');
 const authRoutes = require('./routes/auth.routes');
 const companyRoutes = require('./routes/company.routes');
+const errorHandler = require('./middlewares/error.middleware');
 const departmentRoutes = require('./routes/department.routes');
 const employeeRoutes = require('./routes/employee.routes');
 const leaveTypeRoutes = require('./routes/leave-type.routes');
@@ -24,13 +25,6 @@ app.use('/v1/employees', employeeRoutes);
 app.use('/v1/leave-types', leaveTypeRoutes);
 app.use('/v1', leaveRequestRoutes);
 
-app.use((err, req, res, next) => {
-  res.status(err.status || 500).type('application/problem+json').json({
-    type: 'about:blank',
-    title: err.message || 'Internal Server Error',
-    status: err.status || 500,
-    detail: err.detail || null
-  });
-});
+app.use(errorHandler);
 
 module.exports = app;
