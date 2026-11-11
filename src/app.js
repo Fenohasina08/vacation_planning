@@ -1,36 +1,36 @@
 const express = require('express');
-const swaggerUi = require('swagger-ui-express');
-
-const swaggerDocument = require('./config/swagger');
-const routes = require('./routes');
-
-const requestIdMiddleware = require('./middlewares/request-id.middleware');
-const notFoundMiddleware = require('./middlewares/not-found.middleware');
-const errorMiddleware = require('./middlewares/error.middleware');
+const authRoutes = require('./routes/auth.routes');
+const companyRoutes = require('./routes/company.routes');
+const departmentRoutes = require('./routes/department.routes');
+const employeeRoutes = require('./routes/employee.routes');
+const leaveTypeRoutes = require('./routes/leave-type.routes');
+const leaveRequestRoutes = require('./routes/leave-request.routes');
+const authController = require('./controllers/auth.controller');
 
 const app = express();
 
-// Middlewares globaux
-app.use(requestIdMiddleware);
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 
-// Route principale
-app.get('/', (req, res) => {
-  res.json({
-    message: 'IT Solution API',
-    status: 'running'
-  });
+app.get('/v1/health', (req, res) => {
+  res.status(200).json({ status: 'ok', version: '0.1.0' });
 });
 
-// Documentation API
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+app.get('/v1/me', authController.getMe);
 
-// Routes API
-app.use('/api/v1', routes);
+app.use('/v1/auth', authRoutes);
+app.use('/v1/company', companyRoutes);
+app.use('/v1/departments', departmentRoutes);
+app.use('/v1/employees', employeeRoutes);
+app.use('/v1/leave-types', leaveTypeRoutes);
+app.use('/v1', leaveRequestRoutes);
 
-// Gestion des erreurs
-app.use(notFoundMiddleware);
-app.use(errorMiddleware);
+app.use((err, req, res, next) => {
+  res.status(err.status || 500).type('application/problem+json').json({
+    type: 'about:blank',
+    title: err.message || 'Internal Server Error',
+    status: err.status || 500,
+    detail: err.detail || null
+  });
+});
 
 module.exports = app;
